@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MangaFlow - Baca Manga Online Modern & Minimalis</title>
+  <meta name="description" content="Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, bebas iklan mengganggu, dan anti-gagal." />
+  
+  <!-- Custom Brand Favicon (Replaces any cached default icons) -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg" />
+  
+  <!-- Google Fonts: Outfit, Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <!-- Remixicon for sleek minimalist vector icons -->
+  <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
+
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/reader.css" />
+  
+  <script>
+    if (window.location.protocol === 'file:') {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.body.innerHTML = `
+          <div style="font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; background: #08090d; color: #fff; text-align: center; padding: 24px;">
+            <div style="font-size: 3.5rem; margin-bottom: 16px;">🚀</div>
+            <h1 style="margin-bottom: 12px; font-size: 2rem; font-weight: 700;">Harap Buka Melalui Localhost</h1>
+            <p style="color: #94a3b8; max-width: 520px; line-height: 1.6; margin-bottom: 24px; font-size: 1.05rem;">
+              Aplikasi MangaFlow memerlukan backend server Node.js aktif untuk mengambil data MangaDex dan mem-proxy gambar anti-blokir.
+            </p>
+            <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.4); padding: 20px 32px; border-radius: 16px; margin-bottom: 24px;">
+              <p style="margin: 0 0 8px 0; font-size: 1rem; color: #c7d2fe;">Buka browser Anda dan akses tautan ini:</p>
+              <a href="http://localhost:3000" style="font-size: 1.6rem; font-weight: 800; color: #818cf8; text-decoration: none; letter-spacing: 0.5px;">http://localhost:3000</a>
+            </div>
+            <p style="color: #64748b; font-size: 0.9rem;">Pastikan terminal menjalankan: <code style="background: #161b26; padding: 4px 8px; border-radius: 6px; color: #38bdf8;">npm start</code></p>
+          </div>
+        `;
+      });
+    }
+  </script>
+</head>
+<body class="theme-dark">
+  <!-- Top Glass Navigation -->
+  <header class="navbar" id="main-nav">
+    <div class="nav-container">
+      <div class="nav-brand" id="brand-logo" onclick="app.navigate('home')">
+        <div class="brand-badge">
+          <i class="ri-book-open-fill"></i>
+        </div>
+        <div class="brand-text">
+          <span class="brand-title">Manga<span class="gradient-text">Flow</span></span>
+          <span class="brand-tag">ULTRA</span>
+        </div>
+      </div>
+
+      <nav class="nav-links">
+        <button class="nav-link active" id="nav-home" onclick="app.navigate('home')">
+          <i class="ri-compass-3-line"></i> <span>Jelajah</span>
+        </button>
+        <button class="nav-link" id="nav-latest" onclick="app.navigate('latest')">
+          <i class="ri-time-line"></i> <span>Terbaru</span>
+        </button>
+        <button class="nav-link" id="nav-library" onclick="app.navigate('library')">
+          <i class="ri-bookmark-3-line"></i> <span>Favorit</span>
+          <span class="badge-count" id="nav-fav-count" style="display:none">0</span>
+        </button>
+        <button class="nav-link" id="nav-history" onclick="app.navigate('history')">
+          <i class="ri-history-line"></i> <span>Riwayat</span>
+        </button>
+      </nav>
+
+      <!-- Quick Search Bar -->
+      <div class="nav-search">
+        <div class="search-input-wrapper">
+          <i class="ri-search-line search-icon"></i>
+          <input type="text" id="global-search-input" placeholder="Cari judul manga, komik, atau author..." autocomplete="off" />
+          <button class="clear-btn" id="search-clear-btn" style="display: none;" onclick="app.clearSearch()">
+            <i class="ri-close-line"></i>
+          </button>
+        </div>
+        <!-- Live Quick Search Dropdown -->
+        <div class="quick-search-dropdown" id="quick-search-results"></div>
+      </div>
+
+      <!-- Action Utilities -->
+      <div class="nav-actions">
+        <button class="btn-icon" id="btn-filter-toggle" title="Filter Pencarian Detail" onclick="app.toggleFilterModal()">
+          <i class="ri-sound-module-line"></i>
+        </button>
+        <div class="lang-selector" title="Bahasa Chapter">
+          <button class="lang-btn" id="lang-menu-btn" onclick="app.toggleLangMenu()">
+            <i class="ri-translate-2"></i>
+            <span id="current-lang-label">EN / ID</span>
+          </button>
+          <div class="lang-dropdown" id="lang-dropdown-menu">
+            <label class="lang-opt">
+              <input type="checkbox" value="en" checked onchange="app.updateLangPref()" /> English (EN)
+            </label>
+            <label class="lang-opt">
+              <input type="checkbox" value="id" checked onchange="app.updateLangPref()" /> Indonesia (ID)
+            </label>
+            <label class="lang-opt">
+              <input type="checkbox" value="ja" onchange="app.updateLangPref()" /> Japanese (RAW)
+            </label>
+          </div>
+        </div>
+
+        <!-- User Authentication & Cloud Sync Pill -->
+        <div class="nav-auth-wrap" id="nav-auth-wrap">
+          <button class="auth-nav-btn" id="btn-open-auth" onclick="app.openAuthModal()">
+            <i class="ri-user-3-line"></i>
+            <span>Masuk</span>
+          </button>
+
+          <div class="user-menu-wrap" id="user-menu-wrap" style="display: none;">
+            <button class="user-profile-btn" id="user-profile-btn" onclick="app.toggleUserMenu()">
+              <img class="user-avatar-img" id="nav-user-avatar" src="" alt="Avatar" />
+              <span class="user-name-text" id="nav-user-name">Pengguna</span>
+              <i class="ri-arrow-down-s-line"></i>
+            </button>
+            <div class="user-dropdown-menu" id="user-dropdown-menu">
+              <div class="user-dropdown-header">
+                <div class="ud-name" id="dropdown-user-name">Nama</div>
+                <div class="ud-email" id="dropdown-user-email">email@test.com</div>
+              </div>
+              <button class="user-menu-item" onclick="app.syncNow()">
+                <i class="ri-cloud-line"></i> Sinkronkan Data
+              </button>
+              <button class="user-menu-item logout" onclick="app.handleLogout()">
+                <i class="ri-logout-box-r-line"></i> Keluar Akun
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Container -->
+  <main id="app-viewport">
+    <!-- View will be rendered here dynamically -->
+    <div id="home-view" class="view-section active">
+      <!-- Hero Banner Carousel -->
+      <section class="hero-section" id="hero-container">
+        <div class="hero-loading skeleton-hero"></div>
+      </section>
+
+      <!-- Genre Quick Pills -->
+      <section class="genre-pills-section">
+        <div class="section-container">
+          <div class="pills-scroll" id="genre-pills">
+            <!-- Populated via JS -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Continue Reading Section (Shows if history exists) -->
+      <section class="content-section" id="continue-reading-section" style="display: none;">
+        <div class="section-container">
+          <div class="section-header">
+            <div class="section-title-wrap">
+              <i class="ri-play-circle-line title-icon"></i>
+              <h2>Lanjutkan Membaca</h2>
+            </div>
+            <button class="see-all-btn" onclick="app.navigate('history')">Lihat Semua <i class="ri-arrow-right-s-line"></i></button>
+          </div>
+          <div class="manga-grid continue-grid" id="continue-reading-list"></div>
+        </div>
+      </section>
+
+      <!-- Trending Section -->
+      <section class="content-section">
+        <div class="section-container">
+          <div class="section-header">
+            <div class="section-title-wrap">
+              <i class="ri-fire-line title-icon hot"></i>
+              <h2>Sedang Populer & Trending</h2>
+            </div>
+            <span class="section-subtitle">Manga pilihan komunitas dengan rating tertinggi</span>
+          </div>
+          <div class="manga-grid" id="trending-grid">
+            <!-- Skeleton cards while loading -->
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Latest Updates Section -->
+      <section class="content-section">
+        <div class="section-container">
+          <div class="section-header">
+            <div class="section-title-wrap">
+              <i class="ri-sparkling-fill title-icon new"></i>
+              <h2>Rilis & Update Terbaru</h2>
+            </div>
+            <button class="see-all-btn" onclick="app.navigate('latest')">Semua Update <i class="ri-arrow-right-s-line"></i></button>
+          </div>
+          <div class="manga-grid" id="latest-grid">
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+            <div class="manga-card skeleton-card"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Manga Details View -->
+    <div id="manga-view" class="view-section" style="display: none;"></div>
+
+    <!-- Library / Bookmarks View -->
+    <div id="library-view" class="view-section" style="display: none;"></div>
+
+    <!-- Reading History View -->
+    <div id="history-view" class="view-section" style="display: none;"></div>
+
+    <!-- Latest Dedicated View -->
+    <div id="latest-view" class="view-section" style="display: none;"></div>
+
+    <!-- Search Results View -->
+    <div id="search-view" class="view-section" style="display: none;"></div>
+  </main>
+
+  <!-- Fullscreen Manga Reader Modal -->
+  <div id="reader-overlay" class="reader-overlay" style="display: none;">
+    <!-- Reader Top HUD -->
+    <div class="reader-hud reader-hud-top" id="reader-top-hud">
+      <div class="reader-hud-left">
+        <button class="hud-btn" id="reader-btn-back" title="Kembali (Esc)">
+          <i class="ri-arrow-left-line"></i>
+        </button>
+        <div class="reader-title-info">
+          <span class="reader-manga-title" id="reader-manga-title">Manga Title</span>
+          <span class="reader-chapter-title" id="reader-chapter-title">Chapter 1</span>
+        </div>
+      </div>
+
+      <div class="reader-hud-center">
+        <select class="hud-select" id="reader-chapter-select" title="Pindah Chapter">
+          <!-- Options dynamically rendered -->
+        </select>
+      </div>
+
+      <div class="reader-hud-right">
+        <!-- Auto-Scroll Toggle (Webtoon) -->
+        <button class="hud-btn" id="reader-autoscroll-btn" title="Auto-Scroll Otomatis (S)">
+          <i class="ri-play-circle-line"></i>
+          <span class="hud-btn-text" id="reader-autoscroll-label">Auto-Scroll</span>
+        </button>
+
+        <!-- Reading Mode Toggle -->
+        <button class="hud-btn" id="reader-mode-toggle" title="Ganti Mode Baca (Webtoon / Single Page)">
+          <i class="ri-file-list-2-line"></i>
+          <span class="hud-btn-text" id="reader-mode-label">Webtoon</span>
+        </button>
+
+        <!-- Reading Direction Toggle (RTL / LTR) -->
+        <button class="hud-btn" id="reader-direction-toggle" title="Arah Baca (RTL: Manga Jepang / LTR: Komik Barat)" style="display: none;">
+          <i class="ri-arrow-left-right-line"></i>
+          <span class="hud-btn-text" id="reader-direction-label">RTL</span>
+        </button>
+
+        <!-- Webtoon Width Toggle -->
+        <button class="hud-btn" id="reader-width-toggle" title="Ubah Preset Lebar Webtoon (W)">
+          <i class="ri-ruler-line"></i>
+          <span class="hud-btn-text" id="reader-width-label">1050px</span>
+        </button>
+
+        <!-- Dynamic Zoom Control Pill (+ / - / Reset 100%) -->
+        <div class="hud-zoom-control" id="reader-zoom-control" title="Zoom Ukuran Halaman (+ / - / Reset)">
+          <button class="zoom-btn" id="reader-zoom-out-btn" title="Perkecil (-)"><i class="ri-subtract-line"></i></button>
+          <button class="zoom-level-btn" id="reader-zoom-reset-btn" title="Klik untuk Reset Zoom ke 100% (0)"><span id="reader-zoom-val">100%</span></button>
+          <button class="zoom-btn" id="reader-zoom-in-btn" title="Perbesar (+)"><i class="ri-add-line"></i></button>
+        </div>
+
+        <!-- Fit Mode Toggle (For Single Page) -->
+        <button class="hud-btn" id="reader-fit-toggle" title="Sesuaikan Ukuran Gambar (Fit Width / Height / Contain)" style="display: none;">
+          <i class="ri-aspect-ratio-line"></i>
+        </button>
+
+        <!-- Quality / Proxy Toggle -->
+        <button class="hud-btn" id="reader-quality-toggle" title="Kualitas Gambar / Hemat Data">
+          <i class="ri-hd-line"></i>
+        </button>
+
+        <!-- Reader Pro Settings Drawer Trigger -->
+        <button class="hud-btn" id="reader-settings-btn" title="Pengaturan Tampilan & Redup Layar (O)">
+          <i class="ri-settings-4-line"></i>
+        </button>
+
+        <!-- Keyboard Shortcuts Help -->
+        <button class="hud-btn" id="reader-shortcuts-btn" title="Panduan Tombol Keyboard (?)">
+          <i class="ri-keyboard-line"></i>
+        </button>
+
+        <!-- Fullscreen -->
+        <button class="hud-btn" id="reader-fullscreen-btn" title="Layar Penuh (F)">
+          <i class="ri-fullscreen-line"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Reader Pro Settings Drawer / Panel -->
+    <div class="reader-settings-drawer" id="reader-settings-drawer" style="display: none;">
+      <div class="settings-drawer-header">
+        <div class="settings-drawer-title">
+          <i class="ri-equalizer-line"></i>
+          <span>Pengaturan Reader Pro</span>
+        </div>
+        <button class="settings-drawer-close" id="reader-settings-close-btn"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="settings-drawer-body">
+        <!-- Zoom Level Slider -->
+        <div class="drawer-group">
+          <div class="drawer-label-row">
+            <span class="drawer-label"><i class="ri-zoom-in-line"></i> Skala Ukuran Halaman (Zoom)</span>
+            <span class="drawer-val" id="drawer-zoom-val">100%</span>
+          </div>
+          <div class="dimmer-slider-wrap">
+            <i class="ri-zoom-out-line" style="color: var(--text-dim);"></i>
+            <input type="range" min="50" max="220" step="5" value="100" id="reader-zoom-slider" />
+            <i class="ri-zoom-in-line" style="color: var(--accent-primary);"></i>
+          </div>
+        </div>
+
+        <!-- Brightness Dimmer -->
+        <div class="drawer-group">
+          <div class="drawer-label-row">
+            <span class="drawer-label"><i class="ri-sun-line"></i> Redup Layar (Night Dimmer)</span>
+            <span class="drawer-val" id="drawer-brightness-val">100%</span>
+          </div>
+          <div class="dimmer-slider-wrap">
+            <i class="ri-moon-clear-line" style="color: var(--text-dim);"></i>
+            <input type="range" min="30" max="100" value="100" id="reader-brightness-slider" />
+            <i class="ri-sun-line" style="color: #fbbf24;"></i>
+          </div>
+        </div>
+
+        <!-- Reader Background Theme -->
+        <div class="drawer-group">
+          <span class="drawer-label"><i class="ri-palette-line"></i> Tema Latar Reader</span>
+          <div class="bg-theme-picker" id="reader-bg-picker">
+            <button class="bg-theme-btn active" data-bg="oled" title="Pure OLED Black">
+              <span class="color-dot dot-oled"></span>
+              <span>OLED</span>
+            </button>
+            <button class="bg-theme-btn" data-bg="dark" title="Deep Obsidian">
+              <span class="color-dot dot-dark"></span>
+              <span>Deep</span>
+            </button>
+            <button class="bg-theme-btn" data-bg="midnight" title="Midnight Navy">
+              <span class="color-dot dot-midnight"></span>
+              <span>Midnight</span>
+            </button>
+            <button class="bg-theme-btn" data-bg="sepia" title="Warm Paper Sepia">
+              <span class="color-dot dot-sepia"></span>
+              <span>Sepia</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Auto-Scroll Speed (Webtoon) -->
+        <div class="drawer-group" id="drawer-autoscroll-group">
+          <div class="drawer-label-row">
+            <span class="drawer-label"><i class="ri-speed-up-line"></i> Kecepatan Auto-Scroll</span>
+            <span class="drawer-val" id="drawer-speed-val">2x</span>
+          </div>
+          <div class="speed-selector-row" id="reader-speed-selector">
+            <button class="speed-chip" data-speed="1">1x</button>
+            <button class="speed-chip active" data-speed="2">2x</button>
+            <button class="speed-chip" data-speed="3">3x</button>
+            <button class="speed-chip" data-speed="4">4x</button>
+            <button class="speed-chip" data-speed="5">5x</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Reader Content Workspace -->
+    <div class="reader-workspace" id="reader-workspace">
+      <!-- Loading Spinner / Indicator -->
+      <div class="reader-loader" id="reader-loader">
+        <div class="spinner"></div>
+        <p class="loader-text">Menyiapkan halaman manga...</p>
+        <span class="loader-sub">Anti-fail proxy & fallback aktif</span>
+      </div>
+
+      <!-- Error State with Retry -->
+      <div class="reader-error" id="reader-error" style="display:none;">
+        <i class="ri-error-warning-line"></i>
+        <h3>Gagal Memuat Chapter</h3>
+        <p id="reader-error-msg">Server MangaDex sedang sibuk atau gambar terblokir.</p>
+        <div class="error-actions">
+          <button class="btn btn-primary" id="reader-retry-btn"><i class="ri-refresh-line"></i> Coba Lagi</button>
+          <button class="btn btn-secondary" id="reader-use-saver-btn"><i class="ri-flashlight-line"></i> Coba Mode Data-Saver</button>
+        </div>
+      </div>
+
+      <!-- Container for Webtoon strip mode -->
+      <div class="reader-strip" id="reader-strip" style="display:none;"></div>
+
+      <!-- Container for Single Page mode -->
+      <div class="reader-single-view" id="reader-single-view" style="display:none;">
+        <button class="single-nav-btn prev" id="single-prev-btn" title="Halaman Sebelumnya (Panah Kiri)">
+          <i class="ri-arrow-left-s-line"></i>
+        </button>
+        <div class="single-page-wrapper" id="single-page-wrapper">
+          <img id="single-page-img" src="" alt="Manga Page" />
+        </div>
+        <button class="single-nav-btn next" id="single-next-btn" title="Halaman Selanjutnya (Panah Kanan / Spasi)">
+          <i class="ri-arrow-right-s-line"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Reader Bottom HUD -->
+    <div class="reader-hud reader-hud-bottom" id="reader-bottom-hud">
+      <div class="reader-progress-wrap">
+        <button class="hud-btn-mini" id="reader-prev-chapter-btn" title="Chapter Sebelumnya">
+          <i class="ri-skip-back-line"></i> Prev
+        </button>
+        
+        <div class="page-slider-container">
+          <input type="range" min="1" max="1" value="1" id="reader-page-slider" />
+          <span class="page-counter-pill">
+            <span id="reader-current-page">1</span> / <span id="reader-total-pages">1</span>
+          </span>
+        </div>
+
+        <button class="hud-btn-mini" id="reader-next-chapter-btn" title="Chapter Selanjutnya">
+          Next <i class="ri-skip-forward-line"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Preload Status Pill Indicator -->
+    <div class="reader-preload-pill hidden" id="reader-preload-pill">
+      <i class="ri-loader-4-line"></i>
+      <span id="preload-status-text">Preloading...</span>
+    </div>
+
+    <!-- Floating Auto-Scroll Control Pill -->
+    <div class="autoscroll-pill" id="reader-autoscroll-pill" style="display: none;">
+      <div class="autoscroll-indicator-dot"></div>
+      <span class="autoscroll-text" id="autoscroll-pill-text">Auto-Scroll 2x</span>
+      <button class="autoscroll-mini-btn" id="autoscroll-pause-btn" title="Jeda / Lanjutkan Auto-Scroll">
+        <i class="ri-pause-fill" id="autoscroll-pause-icon"></i>
+      </button>
+      <button class="autoscroll-mini-btn" id="autoscroll-speed-btn" title="Ubah Kecepatan">
+        <i class="ri-speed-up-line"></i>
+      </button>
+      <button class="autoscroll-mini-btn close" id="autoscroll-stop-btn" title="Matikan Auto-Scroll">
+        <i class="ri-close-line"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Help Modal -->
+  <div class="shortcut-modal-backdrop" id="shortcut-modal" style="display: none;">
+    <div class="shortcut-modal-box">
+      <div class="shortcut-modal-header">
+        <div class="shortcut-modal-title">
+          <i class="ri-keyboard-line"></i>
+          <span>Pintasan Keyboard Reader</span>
+        </div>
+        <button class="shortcut-modal-close" onclick="Reader.toggleShortcutsModal()"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="shortcut-modal-body">
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Auto-Scroll Hands-Free (Webtoon)</span>
+          <div class="shortcut-keys"><span class="kbd">S</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Buka Pengaturan Reader & Redup Layar</span>
+          <div class="shortcut-keys"><span class="kbd">O</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Halaman Selanjutnya (Sesuai RTL/LTR)</span>
+          <div class="shortcut-keys">
+            <span class="kbd">Panah Kanan</span> / <span class="kbd">D</span> / <span class="kbd">Spasi</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Halaman Sebelumnya</span>
+          <div class="shortcut-keys">
+            <span class="kbd">Panah Kiri</span> / <span class="kbd">A</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Arah Baca (RTL Manga Jepang / LTR)</span>
+          <div class="shortcut-keys"><span class="kbd">R</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Ganti Mode (Webtoon / Single Page)</span>
+          <div class="shortcut-keys"><span class="kbd">M</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Lebar Webtoon (Compact / Standar / Wide / Full)</span>
+          <div class="shortcut-keys"><span class="kbd">W</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Perbesar / Perkecil / Reset Ukuran Gambar (Zoom)</span>
+          <div class="shortcut-keys"><span class="kbd">+</span> / <span class="kbd">-</span> / <span class="kbd">0</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Zoom Halus Bebas dengan Mouse</span>
+          <div class="shortcut-keys"><span class="kbd">Ctrl</span> + <span class="kbd">Scroll</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Kualitas (Original HD / Data-Saver)</span>
+          <div class="shortcut-keys"><span class="kbd">Q</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Layar Penuh (Fullscreen)</span>
+          <div class="shortcut-keys"><span class="kbd">F</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Chapter Sebelumnya / Selanjutnya</span>
+          <div class="shortcut-keys">
+            <span class="kbd">[</span> dan <span class="kbd">]</span>
+          </div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Tampilkan / Sembunyikan HUD</span>
+          <div class="shortcut-keys"><span class="kbd">H</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Tutup Reader / Batal</span>
+          <div class="shortcut-keys"><span class="kbd">Esc</span></div>
+        </div>
+        <div class="shortcut-item">
+          <span class="shortcut-desc">Buka Bantuan Pintasan Ini</span>
+          <div class="shortcut-keys"><span class="kbd">?</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Advanced Search & Filter Modal -->
+  <div class="modal-backdrop" id="filter-modal" style="display: none;">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="ri-filter-3-line"></i>
+          <h3>Filter & Pencarian Detail</h3>
+        </div>
+        <button class="modal-close" onclick="app.toggleFilterModal()"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="filter-group">
+          <label class="filter-label">Urutkan Berdasarkan</label>
+          <div class="filter-options-grid" id="filter-sort-options">
+            <button class="filter-chip active" data-sort="relevance">Paling Sesuai</button>
+            <button class="filter-chip" data-sort="followed">Paling Populer</button>
+            <button class="filter-chip" data-sort="rating">Rating Tertinggi</button>
+            <button class="filter-chip" data-sort="latest">Update Terbaru</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Status Penerbitan</label>
+          <div class="filter-options-grid" id="filter-status-options">
+            <button class="filter-chip active" data-status="">Semua</button>
+            <button class="filter-chip" data-status="ongoing">Ongoing</button>
+            <button class="filter-chip" data-status="completed">Tamat (Completed)</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <label class="filter-label">Genre & Tag Populer</label>
+          <div class="tags-picker" id="modal-tags-picker">
+            <!-- Loaded dynamically from /api/tags -->
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.resetFilters()">Reset Filter</button>
+        <button class="btn btn-primary" onclick="app.applyFilters()">Terapkan & Cari</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Authentication Modal (Login / Register) -->
+  <div class="modal-backdrop" id="auth-modal" style="display: none;">
+    <div class="modal-box auth-modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="ri-user-heart-line" style="color: var(--accent-primary);"></i>
+          <h3 id="auth-modal-title">Akun MangaFlow</h3>
+        </div>
+        <button class="modal-close" onclick="app.toggleAuthModal(false)"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tab-login" onclick="app.switchAuthTab('login')">
+          <i class="ri-login-box-line"></i> Masuk
+        </button>
+        <button class="auth-tab" id="tab-register" onclick="app.switchAuthTab('register')">
+          <i class="ri-user-add-line"></i> Buat Akun
+        </button>
+      </div>
+
+      <!-- Login Form -->
+      <form class="auth-form" id="form-login" onsubmit="app.handleLoginSubmit(event)">
+        <p class="auth-subtitle">Masuk untuk menyinkronkan komik favorit dan riwayat baca Anda ke cloud.</p>
+        
+        <div class="form-group">
+          <label class="form-label">Username atau Email</label>
+          <div class="form-input-wrap">
+            <i class="ri-user-line form-icon"></i>
+            <input type="text" id="login-identifier" class="form-input" placeholder="contoh: otaku123 atau email@kamu.com" required autocomplete="username" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Kata Sandi</label>
+          <div class="form-input-wrap">
+            <i class="ri-lock-line form-icon"></i>
+            <input type="password" id="login-password" class="form-input" placeholder="Masukkan kata sandi..." required autocomplete="current-password" />
+            <button type="button" class="eye-toggle-btn" onclick="app.togglePasswordVisibility('login-password', this)">
+              <i class="ri-eye-line"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-submit-btn" id="login-submit-btn">
+          <span>Masuk ke Akun</span>
+          <i class="ri-arrow-right-line"></i>
+        </button>
+      </form>
+
+      <!-- Register Form -->
+      <form class="auth-form" id="form-register" style="display: none;" onsubmit="app.handleRegisterSubmit(event)">
+        <p class="auth-subtitle">Daftar akun gratis dalam 5 detik. Favorit dan riwayat Anda tersimpan aman selamanya.</p>
+
+        <div class="form-group">
+          <label class="form-label">Username</label>
+          <div class="form-input-wrap">
+            <i class="ri-at-line form-icon"></i>
+            <input type="text" id="reg-username" class="form-input" placeholder="minimal 3 karakter" required minlength="3" autocomplete="username" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Alamat Email</label>
+          <div class="form-input-wrap">
+            <i class="ri-mail-line form-icon"></i>
+            <input type="email" id="reg-email" class="form-input" placeholder="email@kamu.com" required autocomplete="email" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Kata Sandi</label>
+          <div class="form-input-wrap">
+            <i class="ri-lock-password-line form-icon"></i>
+            <input type="password" id="reg-password" class="form-input" placeholder="minimal 6 karakter" required minlength="6" autocomplete="new-password" />
+            <button type="button" class="eye-toggle-btn" onclick="app.togglePasswordVisibility('reg-password', this)">
+              <i class="ri-eye-line"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary auth-submit-btn" id="reg-submit-btn">
+          <span>Daftar Sekarang</span>
+          <i class="ri-sparkling-fill"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- Mobile Bottom Tab Bar -->
+  <nav class="mobile-nav">
+    <button class="mobile-nav-item active" id="mob-nav-home" onclick="app.navigate('home')">
+      <i class="ri-compass-3-line"></i>
+      <span>Jelajah</span>
+    </button>
+    <button class="mobile-nav-item" id="mob-nav-latest" onclick="app.navigate('latest')">
+      <i class="ri-time-line"></i>
+      <span>Terbaru</span>
+    </button>
+    <button class="mobile-nav-item" id="mob-nav-search" onclick="app.openMobileSearch()">
+      <i class="ri-search-line"></i>
+      <span>Cari</span>
+    </button>
+    <button class="mobile-nav-item" id="mob-nav-library" onclick="app.navigate('library')">
+      <i class="ri-bookmark-3-line"></i>
+      <span>Favorit</span>
+    </button>
+    <button class="mobile-nav-item" id="mob-nav-history" onclick="app.navigate('history')">
+      <i class="ri-history-line"></i>
+      <span>Riwayat</span>
+    </button>
+  </nav>
+
+  <!-- Application Scripts -->
+  <script src="./js/state.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/reader.js"></script>
+  <script src="./js/app.js"></script>
+</body>
+</html>

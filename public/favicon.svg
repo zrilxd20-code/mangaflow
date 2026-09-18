@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="mfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#a855f7" />
+    </linearGradient>
+    <linearGradient id="mfBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#181a24" />
+      <stop offset="100%" stop-color="#0b0c12" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#6366f1" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+  
+  <!-- Rounded Base Canvas -->
+  <rect width="64" height="64" rx="16" fill="url(#mfBg)" stroke="#312e81" stroke-width="1.5" />
+  
+  <!-- Stylized Manga Open Book with Flowing Pages -->
+  <g filter="url(#glow)" transform="translate(10, 12)">
+    <!-- Left Page Wing -->
+    <path d="M22 6 C16 3, 6 4, 2 6 C1.5 6.2, 1 6.8, 1 7.5 L1 30.5 C1 31.5, 2 32, 2.8 31.7 C7 30, 16 29, 21.5 33 C21.8 33.2, 22.2 33, 22.2 32.5 L22 6 Z" fill="url(#mfGrad)" />
+    <!-- Right Page Wing -->
+    <path d="M22 6 C28 3, 38 4, 42 6 C42.5 6.2, 43 6.8, 43 7.5 L43 30.5 C43 31.5, 42 32, 41.2 31.7 C37 30, 28 29, 22.5 33 C22.2 33.2, 21.8 33, 21.8 32.5 L22 6 Z" fill="url(#mfGrad)" opacity="0.9" />
+    <!-- Spine Center Neon Notch -->
+    <path d="M21.5 6 L22.5 6 L22.5 33 L21.5 33 Z" fill="#ffffff" opacity="0.8" />
+    <!-- Speed Lines / Manga Flow Sparkle -->
+    <circle cx="34" cy="12" r="1.5" fill="#c084fc" />
+    <circle cx="10" cy="14" r="1.2" fill="#a5b4fc" />
+    <path d="M20 12 Q12 11 6 13" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
+    <path d="M24 12 Q32 11 38 13" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
+    <path d="M20 18 Q12 17 6 19" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
+    <path d="M24 18 Q32 17 38 19" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
+  </g>
+</svg>

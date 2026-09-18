@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Temporary files & logs
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Optional: Local user database (biarkan template kosong jika mau di-commit, atau exclude data sensitif)
+data/*.tmp
