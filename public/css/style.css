@@ -3,6 +3,7 @@
    =================================================== */
 
 :root {
+  color-scheme: dark;
   --bg-main: #08090d;
   --bg-surface: #0f1219;
   --bg-surface-elevated: #161b26;

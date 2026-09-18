@@ -108,21 +108,39 @@
 }
 
 .hud-select {
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background-color: #121520;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   color: #f8fafc;
-  padding: 8px 16px;
+  padding: 8px 14px;
   border-radius: var(--radius-md);
   font-family: var(--font-body);
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
-  max-width: 220px;
+  max-width: 240px;
+  outline: none;
+  color-scheme: dark;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .hud-select:focus {
   outline: none;
   border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+}
+
+.hud-select option {
+  background-color: #121520 !important;
+  color: #f8fafc !important;
+  padding: 10px 14px;
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.hud-select option:checked,
+.hud-select option:hover {
+  background-color: #312e81 !important;
+  color: #c7d2fe !important;
 }
 
 /* Bottom Progress & Slider */
