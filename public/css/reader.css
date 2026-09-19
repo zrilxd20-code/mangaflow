@@ -1012,4 +1012,216 @@
   transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ===================================================
+   RESPONSIVE READER STYLES (MOBILE HP -> TABLET -> PC)
+   =================================================== */
+
+@media (max-width: 900px) {
+  .reader-hud-top {
+    height: 56px;
+    padding: 0 14px;
+  }
+  .reader-title-info {
+    max-width: 180px;
+  }
+  .reader-manga-title {
+    max-width: 180px;
+    font-size: 0.88rem;
+  }
+  .hud-select {
+    max-width: 160px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Top HUD on Mobile */
+  .reader-hud-top {
+    height: 52px;
+    padding: 0 8px;
+  }
+  .reader-hud-left {
+    gap: 6px;
+  }
+  #reader-btn-back {
+    padding: 6px 10px;
+    font-size: 1rem;
+  }
+  .reader-title-info {
+    max-width: 110px;
+  }
+  .reader-manga-title {
+    max-width: 110px;
+    font-size: 0.8rem;
+  }
+  .reader-chapter-title {
+    font-size: 0.7rem;
+  }
+  .reader-hud-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    max-width: 130px;
+  }
+  #reader-chapter-select {
+    max-width: 125px;
+    padding: 5px 6px;
+    font-size: 0.78rem;
+  }
+  .reader-hud-right {
+    gap: 4px;
+  }
+  /* Hide non-essential desktop buttons on mobile top bar */
+  .hud-btn-text {
+    display: none !important;
+  }
+  #reader-shortcuts-btn {
+    display: none !important;
+  }
+  #reader-zoom-control {
+    display: none !important;
+  }
+  #reader-width-toggle {
+    display: none !important;
+  }
+  .hud-btn {
+    padding: 6px 8px;
+    font-size: 0.95rem;
+    border-radius: 8px;
+  }
+
+  /* Bottom HUD on Mobile */
+  .reader-hud-bottom {
+    height: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding: 0 10px;
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+  }
+  .reader-progress-wrap {
+    width: 100%;
+    gap: 8px;
+  }
+  .hud-btn-mini {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    border-radius: 8px;
+  }
+  .page-slider-container {
+    gap: 8px;
+  }
+  .page-counter-pill {
+    font-size: 0.74rem;
+    padding: 3px 8px;
+  }
+
+  /* Reader Settings Drawer as Mobile Bottom-Sheet */
+  .reader-settings-drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 80vh !important;
+    border-radius: 24px 24px 0 0;
+    border-left: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.85);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    animation: drawerSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes drawerSlideUp {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+
+  /* Webtoon Strip: Full 100% width on Mobile */
+  .reader-strip,
+  .reader-strip.width-compact,
+  .reader-strip.width-standard,
+  .reader-strip.width-wide,
+  .reader-strip.width-full {
+    max-width: 100vw !important;
+    width: 100vw !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .strip-page-wrap {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .strip-page-img {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Single Page View on Mobile */
+  .single-page-wrapper {
+    padding: 4px;
+  }
+  .single-page-wrapper img {
+    max-height: calc(100vh - 104px);
+    max-width: 100vw;
+  }
+  .single-nav-btn {
+    width: 25%;
+    font-size: 2.2rem;
+  }
+
+  /* Auto-Scroll Pill on Mobile */
+  .autoscroll-pill {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    padding: 4px 10px;
+    gap: 6px;
+    transform: scale(0.92);
+    transform-origin: bottom right;
+  }
+  .autoscroll-text {
+    font-size: 0.75rem;
+  }
+  .autoscroll-mini-btn {
+    width: 26px;
+    height: 26px;
+    font-size: 0.85rem;
+  }
+
+  /* Preload Indicator Pill on Mobile */
+  .reader-preload-pill {
+    top: 58px;
+    right: 8px;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+  }
+}
+
+@media (max-width: 400px) {
+  .reader-title-info {
+    max-width: 85px;
+  }
+  .reader-manga-title {
+    max-width: 85px;
+    font-size: 0.75rem;
+  }
+  #reader-chapter-select {
+    max-width: 105px;
+    font-size: 0.74rem;
+  }
+  .reader-hud-top {
+    padding: 0 4px;
+  }
+  .hud-btn {
+    padding: 5px 6px;
+  }
+}
+
 

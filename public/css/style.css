@@ -1313,44 +1313,382 @@ h1, h2, h3, h4, .brand-title {
   to { transform: translateY(0); opacity: 1; }
 }
 
-/* Responsive Breakpoints */
-@media (max-width: 900px) {
-  .hero-content {
-    flex-direction: column;
-    padding: 24px;
-    align-items: flex-start;
+/* ===================================================
+   RESPONSIVE DESIGN SYSTEM (MOBILE HP -> TABLET -> PC)
+   =================================================== */
+
+/* Tablet & Smaller Laptops (max-width: 1024px) */
+@media (max-width: 1024px) {
+  .nav-container {
+    padding: 0 18px;
+    gap: 16px;
   }
-  .hero-poster {
-    display: none;
+  .nav-link {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+  .nav-search {
+    max-width: 320px;
+  }
+  .manga-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
   }
   .hero-section {
-    height: 320px;
+    height: 360px;
+  }
+  .hero-poster {
+    width: 160px;
+    height: 230px;
   }
   .detail-header-inner {
-    flex-direction: column;
-    padding: 24px;
+    gap: 28px;
+    padding: 30px;
   }
   .detail-cover-box {
-    width: 160px;
+    width: 180px;
   }
   .detail-cover-img {
-    height: 230px;
+    height: 260px;
+  }
+  .detail-title {
+    font-size: 1.9rem;
   }
 }
 
+/* Tablet Portrait & Large Phones (max-width: 768px) */
 @media (max-width: 768px) {
   .nav-links {
     display: none;
   }
   .mobile-nav {
     display: flex;
+    padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+    height: calc(60px + env(safe-area-inset-bottom, 0px));
   }
   #app-viewport {
-    padding: 16px 16px 84px 16px;
+    padding: 14px 14px calc(78px + env(safe-area-inset-bottom, 0px)) 14px;
+  }
+  .navbar {
+    height: 60px;
+  }
+  .nav-container {
+    padding: 0 14px;
+    gap: 12px;
+  }
+  .brand-badge {
+    width: 34px;
+    height: 34px;
+    font-size: 1.15rem;
+  }
+  .brand-title {
+    font-size: 1.3rem;
+  }
+  .brand-tag {
+    display: none;
+  }
+  .nav-search {
+    max-width: 240px;
+  }
+  .search-input-wrapper input {
+    padding: 8px 32px 8px 36px;
+    font-size: 0.85rem;
+  }
+  .search-icon {
+    font-size: 0.95rem;
+    left: 12px;
+  }
+  .hero-content {
+    flex-direction: column;
+    padding: 20px;
+    align-items: flex-start;
+    justify-content: flex-end;
+  }
+  .hero-poster {
+    display: none;
+  }
+  .hero-section {
+    height: 300px;
+    border-radius: var(--radius-lg);
+  }
+  .hero-title {
+    font-size: 1.5rem;
+    -webkit-line-clamp: 2;
+  }
+  .hero-desc {
+    -webkit-line-clamp: 2;
+    font-size: 0.85rem;
+    margin-bottom: 12px;
+  }
+  .hero-actions .btn {
+    padding: 8px 14px;
+    font-size: 0.85rem;
   }
   .manga-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .continue-grid {
+    grid-template-columns: 1fr;
+  }
+  .card-cover {
+    height: 220px;
+  }
+  .card-title {
+    font-size: 0.88rem;
+  }
+  .detail-header-inner {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 24px 16px;
+    gap: 18px;
+  }
+  .detail-cover-box {
+    width: 150px;
+    margin: 0 auto;
+  }
+  .detail-cover-img {
+    height: 215px;
+    border-radius: var(--radius-md);
+  }
+  .detail-title {
+    font-size: 1.6rem;
+  }
+  .detail-alt-titles {
+    font-size: 0.82rem;
+  }
+  .detail-stats-bar {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 12px;
+    gap: 12px;
+    font-size: 0.8rem;
+  }
+  .detail-tags-wrap {
+    justify-content: center;
+  }
+  .detail-description {
+    text-align: left;
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+  .detail-actions-row {
+    flex-direction: column;
+    width: 100%;
+    gap: 10px;
+  }
+  .detail-actions-row .btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 0.92rem;
+  }
+  .chapters-section {
+    padding: 20px 14px;
+    border-radius: var(--radius-lg);
+  }
+  .chapters-header-bar {
+    flex-direction: column;
+    align-items: stretch;
     gap: 14px;
+  }
+  .chapters-filters {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+  .filter-select {
+    width: 100%;
+    padding: 10px 12px;
+  }
+  .toast-container {
+    left: 14px;
+    right: 14px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
+  .toast {
+    width: 100%;
+    justify-content: center;
+    font-size: 0.85rem;
+  }
+}
+
+/* Smartphone / Mobile HP (max-width: 560px) */
+@media (max-width: 560px) {
+  html {
+    font-size: 14px;
+  }
+  .navbar {
+    height: 56px;
+  }
+  .nav-container {
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .brand-title {
+    font-size: 1.2rem;
+  }
+  .nav-search {
+    display: none; /* Mobile utilizes the bottom "Cari" tab & full-page search input */
+  }
+  .nav-actions {
+    gap: 6px;
+    margin-left: auto;
+  }
+  .btn-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.1rem;
+  }
+  .lang-btn {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+  }
+  #current-lang-label {
+    display: none; /* Icon-only on small smartphones */
+  }
+  .auth-nav-btn {
+    padding: 6px 12px;
+    font-size: 0.82rem;
+  }
+  .user-name-text {
+    display: none; /* Hide username text to preserve navbar space */
+  }
+  .user-profile-btn {
+    padding: 3px 6px;
+  }
+  .hero-section {
+    height: 250px;
+    margin-bottom: 20px;
+  }
+  .hero-content {
+    padding: 16px;
+  }
+  .hero-title {
+    font-size: 1.3rem;
+  }
+  .hero-tag {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+  }
+  .manga-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .card-cover {
+    height: 185px;
+    border-radius: 10px;
+  }
+  .card-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    top: 6px;
+    left: 6px;
+  }
+  .card-score {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+    top: 6px;
+    right: 6px;
+  }
+  .card-info {
+    padding: 8px 6px;
+  }
+  .card-title {
+    font-size: 0.82rem;
+    line-height: 1.25;
+  }
+  .card-latest-ch {
+    font-size: 0.72rem;
+  }
+  .continue-thumb {
+    width: 65px;
+    height: 90px;
+  }
+  .continue-title {
+    font-size: 0.85rem;
+  }
+  .continue-sub {
+    font-size: 0.75rem;
+  }
+  /* Modals: Mobile Bottom-Sheet or Centered Compact */
+  .modal-backdrop {
+    padding: 10px;
+    align-items: flex-end;
+  }
+  .modal-box {
+    max-width: 100%;
+    border-radius: 20px 20px 0 0;
+    max-height: 88vh;
+  }
+  .modal-header {
+    padding: 16px;
+  }
+  .modal-body {
+    padding: 16px;
+    max-height: calc(88vh - 130px);
+  }
+  .modal-footer {
+    padding: 12px 16px;
+    flex-direction: column-reverse;
+  }
+  .modal-footer .btn {
+    width: 100%;
+  }
+  .auth-modal-box {
+    border-radius: 20px 20px 0 0 !important;
+  }
+  .auth-tabs {
+    margin: 12px 14px 0 14px;
+  }
+  .auth-form {
+    padding: 16px 14px;
+    gap: 12px;
+  }
+  .form-input {
+    font-size: 16px; /* Prevents auto-zoom on iOS Safari */
+    padding: 10px 36px;
+  }
+  .form-icon {
+    left: 10px;
+  }
+  .auth-submit-btn {
+    padding: 12px;
+    font-size: 0.95rem;
+  }
+  /* Paged & Genre Pills Horizontal Smooth Touch Scroll */
+  .genre-pills-section {
+    margin-bottom: 20px;
+  }
+  .pills-scroll {
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .genre-pill {
+    padding: 5px 12px;
+    font-size: 0.8rem;
+  }
+}
+
+/* Ultra-Compact Smartphone (<= 360px, e.g. iPhone SE / Galaxy A / Fold Cover) */
+@media (max-width: 360px) {
+  .manga-grid {
+    gap: 8px;
+  }
+  .card-cover {
+    height: 165px;
+  }
+  .detail-cover-box {
+    width: 120px;
+  }
+  .detail-cover-img {
+    height: 175px;
+  }
+  .detail-title {
+    font-size: 1.35rem;
+  }
+  .brand-title {
+    font-size: 1.1rem;
   }
 }
 

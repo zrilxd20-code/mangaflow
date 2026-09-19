@@ -775,6 +775,19 @@ const app = {
   },
 
   // ---------------- Search & Filter View ----------------
+  openMobileSearch() {
+    this.navigate('search');
+    setTimeout(() => {
+      const pageInput = document.getElementById('search-page-input');
+      if (pageInput) {
+        pageInput.focus();
+      } else {
+        const navInput = document.getElementById('global-search-input');
+        if (navInput) navInput.focus();
+      }
+    }, 150);
+  },
+
   async performSearch(q) {
     this.navigate('search', { q });
   },
@@ -785,10 +798,19 @@ const app = {
 
     view.innerHTML = `
       <div class="section-container">
+        <!-- Prominent Mobile & Desktop Search Bar -->
+        <div class="search-page-bar" style="margin-bottom: 24px;">
+          <div class="search-input-wrapper" style="max-width: 600px; margin: 0 auto;">
+            <i class="ri-search-line search-icon"></i>
+            <input type="text" id="search-page-input" value="${params.q || ''}" placeholder="Cari judul komik, manhwa, atau author..." />
+            ${params.q ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
+          </div>
+        </div>
+
         <div class="section-header">
           <div class="section-title-wrap">
             <i class="ri-search-line title-icon"></i>
-            <h2>Hasil Pencarian ${params.q ? `untuk "${params.q}"` : ''}</h2>
+            <h2>${params.q ? `Hasil: "${params.q}"` : 'Jelajahi & Cari Komik'}</h2>
           </div>
           <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
             <i class="ri-sound-module-line"></i> Filter & Opsi
@@ -802,6 +824,16 @@ const app = {
         </div>
       </div>
     `;
+
+    const pageInput = document.getElementById('search-page-input');
+    if (pageInput) {
+      pageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const val = e.target.value.trim();
+          this.navigate('search', { q: val });
+        }
+      });
+    }
 
     try {
       const queryParams = {
