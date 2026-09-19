@@ -468,6 +468,7 @@
   height: 60vh;
   gap: 14px;
   max-width: 440px;
+  margin: 0 auto;
   padding: 24px;
 }
 
@@ -488,8 +489,11 @@
 
 .error-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
   margin-top: 10px;
+  width: 100%;
 }
 
 @keyframes spin {
@@ -1129,6 +1133,28 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     animation: drawerSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .settings-drawer-close {
+    width: 36px;
+    height: 36px;
+    font-size: 1.3rem;
+  }
+
+  .reader-error {
+    height: 70vh;
+    padding: 16px;
+    width: 100%;
+  }
+
+  .error-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .error-actions .btn {
+    width: 100%;
+    padding: 12px;
   }
 
   @keyframes drawerSlideUp {
