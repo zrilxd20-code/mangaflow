@@ -7,9 +7,11 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const util = require('util');
+const os = require('os');
 const scryptAsync = util.promisify(crypto.scrypt);
 
-const DATA_DIR = path.join(__dirname, 'data');
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+const DATA_DIR = isServerless ? path.join(os.tmpdir(), 'mangaflow_data') : path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 class Database {
