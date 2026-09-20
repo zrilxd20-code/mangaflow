@@ -51,14 +51,9 @@ const app = {
           return;
         }
 
-        this.searchTimeout = setTimeout(async () => {
-          try {
-            const res = await Api.search({ q, limit: 6 });
-            this.renderQuickSearchDropdown(res.data || [], 'quick-search-results');
-          } catch (err) {
-            console.error(err);
-          }
-        }, 350);
+        this.searchTimeout = setTimeout(() => {
+          this.executeQuickSearch(q, 'quick-search-results');
+        }, 320);
       });
 
       searchInput.addEventListener('keydown', (e) => {
@@ -88,14 +83,9 @@ const app = {
           return;
         }
 
-        this.searchTimeout = setTimeout(async () => {
-          try {
-            const res = await Api.search({ q, limit: 6 });
-            this.renderQuickSearchDropdown(res.data || [], 'mobile-quick-search-results');
-          } catch (err) {
-            console.error(err);
-          }
-        }, 350);
+        this.searchTimeout = setTimeout(() => {
+          this.executeQuickSearch(q, 'mobile-quick-search-results');
+        }, 320);
       });
 
       mobSearchInput.addEventListener('keydown', (e) => {
@@ -119,6 +109,10 @@ const app = {
       if (!e.target.closest('.mobile-search-bar') && !e.target.closest('#btn-mobile-search-toggle') && !e.target.closest('#mob-nav-search')) {
         const mobDd = document.getElementById('mobile-quick-search-results');
         if (mobDd) mobDd.classList.remove('open');
+      }
+      if (!e.target.closest('#server-selector-wrap')) {
+        const sm = document.getElementById('server-dropdown-menu');
+        if (sm) sm.classList.remove('open');
       }
       if (!e.target.closest('.lang-selector')) {
         const lm = document.getElementById('lang-dropdown-menu');
@@ -982,14 +976,55 @@ const app = {
     }
   },
 
-  // ---------------- Quick Search Dropdown ----------------
-  renderQuickSearchDropdown(items, targetId = 'quick-search-results') {
+  // ---------------- Quick Search Dropdown & Unified Query ----------------
+  async executeQuickSearch(q, targetId) {
+    try {
+      let items = [];
+      if (this.activeSource === 'mangapill') {
+        const res = await Api.searchMangaPill(q);
+        items = (res.data || []).slice(0, 7);
+      } else {
+        const res = await Api.search({ q, limit: 7 });
+        items = res.data || [];
+      }
+      this.renderQuickSearchDropdown(items, targetId, q);
+    } catch (err) {
+      console.error('Quick search error:', err);
+    }
+  },
+
+  renderQuickSearchDropdown(items, targetId = 'quick-search-results', currentQ = '') {
     const dropdown = document.getElementById(targetId);
     if (!dropdown) return;
     dropdown.innerHTML = '';
 
+    const isPill = this.activeSource === 'mangapill';
+
+    // Header bar inside quick dropdown showing active server & toggle
+    const headerEl = document.createElement('div');
+    headerEl.className = 'quick-search-header-bar';
+    headerEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 8px 10px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 6px;';
+    headerEl.innerHTML = `
+      <span style="font-size: 0.76rem; color: var(--text-dim); font-weight: 600;">
+        ${isPill ? '🟢 Server 2: MangaPill (Komplit)' : '🔥 Server 1: MangaDex (Official)'}
+      </span>
+      <button style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-subtle); color: var(--text-main); cursor: pointer; font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
+        Ganti ke ${isPill ? 'Server 1' : 'Server 2'} ⇄
+      </button>
+    `;
+    dropdown.appendChild(headerEl);
+
     if (!items.length) {
-      dropdown.classList.remove('open');
+      const emptyEl = document.createElement('div');
+      emptyEl.style.cssText = 'padding: 16px 10px; text-align: center; color: var(--text-dim); font-size: 0.85rem;';
+      emptyEl.innerHTML = `
+        Tidak ada hasil di ${isPill ? 'Server 2' : 'Server 1'}.<br>
+        <button class="btn btn-sm btn-secondary" style="margin-top: 8px; padding: 4px 12px; font-size: 0.78rem;" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
+          Cari di ${isPill ? 'Server 1: MangaDex' : 'Server 2: MangaPill (Komplit)'}
+        </button>
+      `;
+      dropdown.appendChild(emptyEl);
+      dropdown.classList.add('open');
       return;
     }
 
@@ -1002,14 +1037,16 @@ const app = {
         this.navigate('manga', { id: item.id });
       };
 
+      const isItemPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+
       el.innerHTML = `
-        <img class="search-item-thumb" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" />
+        <img class="search-item-thumb" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" onerror="this.onerror=null;this.src='https://placehold.co/400x600/181a20/818cf8?text=No+Cover';" />
         <div class="search-item-info">
           <div class="search-item-title">${item.title}</div>
           <div class="search-item-meta">
-            <span>${item.status}</span>
+            <span>${item.status || 'Publishing'}</span>
             <span>•</span>
-            <span>${item.tags && item.tags[0] ? item.tags[0] : 'Manga'}</span>
+            <span style="${isItemPill ? 'color: #10b981; font-weight: 600;' : ''}">${isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? item.tags[0] : 'Manga')}</span>
           </div>
         </div>
       `;
@@ -1017,7 +1054,67 @@ const app = {
       dropdown.appendChild(el);
     });
 
+    if (currentQ) {
+      const footerEl = document.createElement('div');
+      footerEl.style.cssText = 'padding: 8px 10px 4px 10px; border-top: 1px solid var(--border-subtle); margin-top: 6px; text-align: center;';
+      footerEl.innerHTML = `
+        <button style="background: none; border: none; color: var(--accent-primary); cursor: pointer; font-weight: 600; font-size: 0.82rem; width: 100%; padding: 4px;" onclick="document.getElementById('${targetId}').classList.remove('open'); app.performSearch('${encodeURIComponent(currentQ)}')">
+          Lihat Semua Hasil Pencarian <i class="ri-arrow-right-line"></i>
+        </button>
+      `;
+      dropdown.appendChild(footerEl);
+    }
+
     dropdown.classList.add('open');
+  },
+
+  toggleSearchSourceFromDropdown(targetId) {
+    const newSource = this.activeSource === 'mangapill' ? 'mangadex' : 'mangapill';
+    this.selectGlobalServer(newSource);
+    const input = targetId.includes('mobile')
+      ? document.getElementById('mobile-search-input')
+      : document.getElementById('global-search-input');
+    const q = input ? input.value.trim() : '';
+    if (q) {
+      this.executeQuickSearch(q, targetId);
+    }
+  },
+
+  toggleServerMenu() {
+    const menu = document.getElementById('server-dropdown-menu');
+    if (menu) menu.classList.toggle('open');
+  },
+
+  selectGlobalServer(source) {
+    this.activeSource = source;
+    const isPill = source === 'mangapill';
+
+    const label = document.getElementById('current-server-label');
+    if (label) {
+      label.textContent = isPill ? 'Server 2: Komplit' : 'Server 1: MangaDex';
+    }
+
+    const optDex = document.getElementById('server-opt-mangadex');
+    const optPill = document.getElementById('server-opt-mangapill');
+    if (optDex) optDex.classList.toggle('active', !isPill);
+    if (optPill) optPill.classList.toggle('active', isPill);
+
+    const mobDex = document.getElementById('mob-srv-mangadex');
+    const mobPill = document.getElementById('mob-srv-mangapill');
+    if (mobDex) mobDex.classList.toggle('active', !isPill);
+    if (mobPill) mobPill.classList.toggle('active', isPill);
+
+    const menu = document.getElementById('server-dropdown-menu');
+    if (menu) menu.classList.remove('open');
+
+    this.showToast(isPill ? 'Aktif: Server 2 MangaPill (Chapter Komplit 100%)' : 'Aktif: Server 1 MangaDex (Official & ID)');
+
+    // Refresh search view if currently open
+    if (this.currentView === 'search') {
+      const pageInput = document.getElementById('search-page-input');
+      const q = pageInput ? pageInput.value.trim() : '';
+      this.renderSearchView({ q });
+    }
   },
 
   clearSearch() {
@@ -1063,13 +1160,8 @@ const app = {
   },
 
   openMobileSearch() {
-    const bar = document.getElementById('mobile-search-bar');
-    if (bar && bar.style.display === 'flex') {
-      this.navigate('search');
-      this.toggleMobileSearch(false);
-    } else {
-      this.toggleMobileSearch(true);
-    }
+    this.navigate('search');
+    this.toggleMobileSearch(true);
   },
 
   // ---------------- Tags & Genres ----------------
