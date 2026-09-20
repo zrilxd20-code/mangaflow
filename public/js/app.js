@@ -52,7 +52,7 @@ const app = {
         this.searchTimeout = setTimeout(async () => {
           try {
             const res = await Api.search({ q, limit: 6 });
-            this.renderQuickSearchDropdown(res.data || []);
+            this.renderQuickSearchDropdown(res.data || [], 'quick-search-results');
           } catch (err) {
             console.error(err);
           }
@@ -70,11 +70,53 @@ const app = {
       });
     }
 
+    // Mobile Search Bar Inputs & Dropdown
+    const mobSearchInput = document.getElementById('mobile-search-input');
+    const mobSearchDropdown = document.getElementById('mobile-quick-search-results');
+    const mobClearBtn = document.getElementById('mobile-search-clear-btn');
+
+    if (mobSearchInput) {
+      mobSearchInput.addEventListener('input', (e) => {
+        const q = e.target.value.trim();
+        if (mobClearBtn) mobClearBtn.style.display = q ? 'block' : 'none';
+
+        clearTimeout(this.searchTimeout);
+        if (!q) {
+          if (mobSearchDropdown) mobSearchDropdown.classList.remove('open');
+          return;
+        }
+
+        this.searchTimeout = setTimeout(async () => {
+          try {
+            const res = await Api.search({ q, limit: 6 });
+            this.renderQuickSearchDropdown(res.data || [], 'mobile-quick-search-results');
+          } catch (err) {
+            console.error(err);
+          }
+        }, 350);
+      });
+
+      mobSearchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = mobSearchInput.value.trim();
+          if (q) {
+            if (mobSearchDropdown) mobSearchDropdown.classList.remove('open');
+            this.toggleMobileSearch(false);
+            this.performSearch(q);
+          }
+        }
+      });
+    }
+
     // Close dropdowns on outside click
     document.addEventListener('click', (e) => {
       if (!e.target.closest('.nav-search')) {
         const dd = document.getElementById('quick-search-results');
         if (dd) dd.classList.remove('open');
+      }
+      if (!e.target.closest('.mobile-search-bar') && !e.target.closest('#btn-mobile-search-toggle') && !e.target.closest('#mob-nav-search')) {
+        const mobDd = document.getElementById('mobile-quick-search-results');
+        if (mobDd) mobDd.classList.remove('open');
       }
       if (!e.target.closest('.lang-selector')) {
         const lm = document.getElementById('lang-dropdown-menu');
@@ -178,14 +220,16 @@ const app = {
     }
 
     // Update active nav links
-    document.querySelectorAll('.nav-link, .mobile-nav-item').forEach((el) => {
+    document.querySelectorAll('.nav-link, .mobile-nav-item, .mob-tab-btn').forEach((el) => {
       el.classList.remove('active');
     });
 
     const activeNavBtn = document.getElementById(`nav-${viewName}`);
     const activeMobBtn = document.getElementById(`mob-nav-${viewName}`);
+    const activeMobTopBtn = document.getElementById(`mob-top-${viewName}`);
     if (activeNavBtn) activeNavBtn.classList.add('active');
     if (activeMobBtn) activeMobBtn.classList.add('active');
+    if (activeMobTopBtn) activeMobTopBtn.classList.add('active');
 
     // Hide all view sections
     document.querySelectorAll('.view-section').forEach((el) => {
@@ -868,8 +912,9 @@ const app = {
   },
 
   // ---------------- Quick Search Dropdown ----------------
-  renderQuickSearchDropdown(items) {
-    const dropdown = document.getElementById('quick-search-results');
+  renderQuickSearchDropdown(items, targetId = 'quick-search-results') {
+    const dropdown = document.getElementById(targetId);
+    if (!dropdown) return;
     dropdown.innerHTML = '';
 
     if (!items.length) {
@@ -882,6 +927,7 @@ const app = {
       el.className = 'search-dropdown-item';
       el.onclick = () => {
         dropdown.classList.remove('open');
+        this.toggleMobileSearch(false);
         this.navigate('manga', { id: item.id });
       };
 
@@ -905,15 +951,54 @@ const app = {
 
   clearSearch() {
     const input = document.getElementById('global-search-input');
-    input.value = '';
-    document.getElementById('search-clear-btn').style.display = 'none';
-    document.getElementById('quick-search-results').classList.remove('open');
+    if (input) input.value = '';
+    const clearBtn = document.getElementById('search-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const dd = document.getElementById('quick-search-results');
+    if (dd) dd.classList.remove('open');
+  },
+
+  toggleMobileSearch(force) {
+    const bar = document.getElementById('mobile-search-bar');
+    const input = document.getElementById('mobile-search-input');
+    if (!bar) return;
+
+    const isCurrentlyOpen = bar.style.display === 'flex';
+    const shouldOpen = typeof force === 'boolean' ? force : !isCurrentlyOpen;
+
+    if (shouldOpen) {
+      bar.style.display = 'flex';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (input) {
+        setTimeout(() => input.focus(), 60);
+      }
+    } else {
+      bar.style.display = 'none';
+      const dd = document.getElementById('mobile-quick-search-results');
+      if (dd) dd.classList.remove('open');
+    }
+  },
+
+  clearMobileSearch() {
+    const input = document.getElementById('mobile-search-input');
+    if (input) {
+      input.value = '';
+      input.focus();
+    }
+    const clearBtn = document.getElementById('mobile-search-clear-btn');
+    if (clearBtn) clearBtn.style.display = 'none';
+    const dd = document.getElementById('mobile-quick-search-results');
+    if (dd) dd.classList.remove('open');
   },
 
   openMobileSearch() {
-    const input = document.getElementById('global-search-input');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    input.focus();
+    const bar = document.getElementById('mobile-search-bar');
+    if (bar && bar.style.display === 'flex') {
+      this.navigate('search');
+      this.toggleMobileSearch(false);
+    } else {
+      this.toggleMobileSearch(true);
+    }
   },
 
   // ---------------- Tags & Genres ----------------

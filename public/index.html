@@ -88,6 +88,10 @@
 
       <!-- Action Utilities -->
       <div class="nav-actions">
+        <!-- Mobile Search Button -->
+        <button class="btn-icon mobile-search-toggle" id="btn-mobile-search-toggle" title="Cari Manga" onclick="app.toggleMobileSearch()">
+          <i class="ri-search-line"></i>
+        </button>
         <button class="btn-icon" id="btn-filter-toggle" title="Filter Pencarian Detail" onclick="app.toggleFilterModal()">
           <i class="ri-sound-module-line"></i>
         </button>
@@ -137,6 +141,37 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Mobile Expandable Search Bar -->
+    <div class="mobile-search-bar" id="mobile-search-bar" style="display: none;">
+      <div class="search-input-wrapper">
+        <i class="ri-search-line search-icon"></i>
+        <input type="text" id="mobile-search-input" placeholder="Cari judul manga, komik, atau author..." autocomplete="off" />
+        <button class="clear-btn" id="mobile-search-clear-btn" style="display: none;" onclick="app.clearMobileSearch()">
+          <i class="ri-close-line"></i>
+        </button>
+      </div>
+      <button class="btn-icon mobile-search-close-btn" onclick="app.toggleMobileSearch(false)" title="Tutup">
+        <i class="ri-close-line"></i>
+      </button>
+      <div class="quick-search-dropdown" id="mobile-quick-search-results"></div>
+    </div>
+
+    <!-- Mobile Top Navigation Tabs Bar -->
+    <div class="mobile-top-tabs-bar" id="mobile-top-tabs-bar">
+      <button class="mob-tab-btn active" id="mob-top-home" onclick="app.navigate('home')">
+        <i class="ri-compass-3-line"></i> <span>Jelajah</span>
+      </button>
+      <button class="mob-tab-btn" id="mob-top-latest" onclick="app.navigate('latest')">
+        <i class="ri-time-line"></i> <span>Terbaru</span>
+      </button>
+      <button class="mob-tab-btn" id="mob-top-library" onclick="app.navigate('library')">
+        <i class="ri-bookmark-3-line"></i> <span>Favorit</span>
+      </button>
+      <button class="mob-tab-btn" id="mob-top-history" onclick="app.navigate('history')">
+        <i class="ri-history-line"></i> <span>Riwayat</span>
+      </button>
     </div>
   </header>
 
