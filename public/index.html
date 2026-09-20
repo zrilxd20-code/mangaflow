@@ -99,7 +99,7 @@
         <div class="server-selector" id="server-selector-wrap" title="Pilih Server Komik">
           <button class="server-btn" id="server-menu-btn" onclick="app.toggleServerMenu()">
             <i class="ri-server-line"></i>
-            <span id="current-server-label">Server 1 (MangaDex)</span>
+            <span id="current-server-label">MangaDex</span>
             <i class="ri-arrow-down-s-line"></i>
           </button>
           <div class="server-dropdown" id="server-dropdown-menu">
@@ -173,8 +173,8 @@
 
     <!-- Mobile Expandable Search Bar -->
     <div class="mobile-search-bar" id="mobile-search-bar" style="display: none;">
-      <div style="display: flex; gap: 8px; align-items: center; width: 100%;">
-        <div class="search-input-wrapper" style="flex: 1;">
+      <div class="mobile-search-row">
+        <div class="search-input-wrapper">
           <i class="ri-search-line search-icon"></i>
           <input type="text" id="mobile-search-input" placeholder="Cari judul manga, komik, atau author..." autocomplete="off" />
           <button class="clear-btn" id="mobile-search-clear-btn" style="display: none;" onclick="app.clearMobileSearch()">
@@ -187,7 +187,7 @@
       </div>
 
       <!-- Quick Server Tabs in Mobile Search -->
-      <div class="mobile-server-tabs" id="mobile-server-tabs" style="display: flex; gap: 8px; margin-top: 8px; width: 100%;">
+      <div class="mobile-server-tabs" id="mobile-server-tabs">
         <button class="mob-server-tab active" id="mob-srv-mangadex" onclick="app.selectGlobalServer('mangadex')">
           <i class="ri-fire-fill"></i> Server 1: MangaDex
         </button>

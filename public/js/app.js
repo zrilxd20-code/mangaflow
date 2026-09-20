@@ -1091,7 +1091,7 @@ const app = {
 
     const label = document.getElementById('current-server-label');
     if (label) {
-      label.textContent = isPill ? 'Server 2: Komplit' : 'Server 1: MangaDex';
+      label.textContent = isPill ? 'MangaPill' : 'MangaDex';
     }
 
     const optDex = document.getElementById('server-opt-mangadex');
