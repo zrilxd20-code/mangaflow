@@ -101,17 +101,46 @@ const Api = {
 
   // 5. Manga Details
   async getManga(id) {
+    if (String(id).startsWith('pill-')) {
+      return this.getMangaPillDetail(id);
+    }
     return this.request(`/manga/${id}`);
   },
 
   // 6. Manga Chapters
   async getChapters(mangaId, lang = 'en,id', order = 'desc') {
+    if (String(mangaId).startsWith('pill-')) {
+      const res = await this.getMangaPillDetail(mangaId);
+      let chapters = res.data?.chapters || [];
+      if (order === 'asc') {
+        chapters = [...chapters].reverse();
+      }
+      return { success: true, data: chapters, total: chapters.length };
+    }
     return this.request(`/manga/${mangaId}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`);
   },
 
   // 7. Chapter Pages
   async getChapterPages(chapterId) {
+    if (String(chapterId).startsWith('pill-')) {
+      return this.getMangaPillChapter(chapterId);
+    }
     return this.request(`/chapter/${chapterId}`);
+  },
+
+  // ---------------- MangaPill (Complete Chapters Provider) ----------------
+  async searchMangaPill(q) {
+    return this.request(`/mangapill/search?q=${encodeURIComponent(q)}`);
+  },
+
+  async getMangaPillDetail(id, slug = '') {
+    const cleanId = String(id).replace(/^pill-/, '');
+    return this.request(`/mangapill/manga/${cleanId}${slug ? '/' + slug : ''}`);
+  },
+
+  async getMangaPillChapter(chapterId, slug = '') {
+    const cleanChId = String(chapterId).replace(/^pill-/, '');
+    return this.request(`/mangapill/chapter/${cleanChId}${slug ? '/' + slug : ''}`);
   },
 
   // ---------------- Image Resilience Helper ----------------

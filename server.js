@@ -6,6 +6,7 @@ const path = require('path');
 const dns = require('dns');
 const { Readable } = require('stream');
 const db = require('./database');
+const mangapill = require('./providers/mangapill');
 
 // ----------------------------------------------------
 // ANTI-ISP BLOCKING & DYNAMIC DNS-OVER-HTTPS (DoH) LAYER
@@ -653,6 +654,69 @@ app.get('/api/chapter/:id', async (req, res) => {
   }
 });
 
+// ----------------------------------------------------
+// MangaPill Provider Endpoints (Complete Manga Archives)
+// ----------------------------------------------------
+app.get('/api/mangapill/search', async (req, res) => {
+  const q = req.query.q || '';
+  if (!q.trim()) {
+    return res.json({ success: true, data: [], total: 0, source: 'mangapill' });
+  }
+
+  const cacheKey = `pill:search:${q.trim().toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
+
+  try {
+    const result = await mangapill.searchMangaPill(q);
+    cache.set(cacheKey, result.data, 900); // 15 mins cache
+    res.json(result);
+  } catch (err) {
+    console.error('MangaPill search error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get(['/api/mangapill/manga/:id', '/api/mangapill/manga/:id/:slug'], async (req, res) => {
+  const { id, slug } = req.params;
+  const cleanId = String(id).replace(/^pill-/, '');
+  const cacheKey = `pill:manga:${cleanId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
+
+  try {
+    const result = await mangapill.getMangaPillDetail(cleanId, slug || '');
+    cache.set(cacheKey, result.data, 900);
+    res.json(result);
+  } catch (err) {
+    console.error('MangaPill detail error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get(['/api/mangapill/chapter/:chapterId', '/api/mangapill/chapter/:chapterId/:slug'], async (req, res) => {
+  const { chapterId, slug } = req.params;
+  const cleanChId = String(chapterId).replace(/^pill-/, '');
+  const cacheKey = `pill:chapter:${cleanChId}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
+
+  try {
+    const result = await mangapill.getMangaPillChapter(cleanChId, slug || '');
+    cache.set(cacheKey, result.data, 1800); // 30 mins cache
+    res.json(result);
+  } catch (err) {
+    console.error('MangaPill chapter error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 8. Resilient Image Proxy (Bypasses CORS, Adblocker, & Referer restrictions with strict SSRF guard & streaming)
 app.get('/api/proxy/image', async (req, res) => {
   const imageUrl = req.query.url;
@@ -692,17 +756,28 @@ app.get('/api/proxy/image', async (req, res) => {
     }
 
     // 3. Strict host whitelist: exact match or official dot-subdomain
-    const allowedHosts = ['mangadex.org', 'mangadex.network', 'uploads.mangadex.org', 'placehold.co'];
+    const allowedHosts = [
+      'mangadex.org',
+      'mangadex.network',
+      'uploads.mangadex.org',
+      'placehold.co',
+      'mangapill.com',
+      'cdn.readdetectiveconan.com',
+      'readdetectiveconan.com'
+    ];
     const isAllowed = allowedHosts.some((h) => hostname === h || hostname.endsWith('.' + h));
 
     if (!isAllowed) {
       return res.status(403).send('Domain tidak diizinkan');
     }
 
+    const isMangaPill = hostname.includes('readdetectiveconan.com') || hostname.includes('mangapill.com');
+    const referer = isMangaPill ? 'https://mangapill.com/' : 'https://mangadex.org/';
+
     const response = await fetch(imageUrl, {
       headers: {
-        'User-Agent': USER_AGENT,
-        Referer: 'https://mangadex.org/'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Referer: referer
       }
     });
 

@@ -13,6 +13,8 @@ const app = {
   selectedFilterTags: new Set(),
   selectedSort: 'relevance',
   selectedStatus: '',
+  activeSource: 'mangadex',
+  chaptersDisplayLimit: 80,
 
   async init() {
     Reader.init();
@@ -423,21 +425,28 @@ const app = {
 
     const statusClass = item.status === 'completed' ? 'completed' : 'ongoing';
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
+    const isPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
 
     card.innerHTML = `
       <div class="card-cover-wrap">
         <img class="card-cover" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${item.coverUrlSmall || item.coverUrl}');}else{this.onerror=null;this.src='https://placehold.co/400x600/181a20/818cf8?text=No+Cover';}" />
         <div class="card-badges">
-          <span class="card-badge badge-status ${statusClass}">
-            <i class="ri-checkbox-blank-circle-fill" style="font-size: 0.55rem;"></i> ${statusText}
-          </span>
+          ${isPill ? `
+            <span class="card-badge" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; font-weight: 700;">
+              <i class="ri-check-double-line"></i> Komplit
+            </span>
+          ` : `
+            <span class="card-badge badge-status ${statusClass}">
+              <i class="ri-checkbox-blank-circle-fill" style="font-size: 0.55rem;"></i> ${statusText}
+            </span>
+          `}
           ${item.tags && item.tags[0] ? `<span class="card-badge">${item.tags[0]}</span>` : ''}
         </div>
       </div>
       <div class="card-body">
         <h4 class="card-title" title="${item.title}">${item.title}</h4>
         <div class="card-meta">
-          <span>${item.year ? item.year : 'Manga'}</span>
+          <span>${item.year ? item.year : (isPill ? 'Server Komplit' : 'Manga')}</span>
           <span style="color: #fbbf24;"><i class="ri-star-fill"></i> Populer</span>
         </div>
       </div>
@@ -494,6 +503,7 @@ const app = {
 
   // ---------------- Manga Detail View ----------------
   async renderMangaDetailView(mangaId) {
+    this.chaptersDisplayLimit = 80;
     const view = document.getElementById('manga-view');
     view.style.display = 'block';
     view.innerHTML = `
@@ -513,6 +523,7 @@ const app = {
       this.selectedManga = manga;
 
       const isFav = State.isBookmarked(manga.id);
+      const isPill = manga.source === 'mangapill' || String(manga.id).startsWith('pill-');
       const tagsHtml = (manga.tags || [])
         .map((t) => `<span class="detail-tag">${t}</span>`)
         .join('');
@@ -535,10 +546,17 @@ const app = {
                     <i class="ri-star-fill" style="color: #fbbf24;"></i>
                     <span>${manga.rating || '8.5'} / 10</span>
                   </div>
+                  ${isPill ? `
+                  <div class="stat-item" style="color: #10b981; font-weight: 700;">
+                    <i class="ri-checkbox-circle-fill"></i>
+                    <span>Server Komplit 100% (${chapters.length} Chapter)</span>
+                  </div>
+                  ` : `
                   <div class="stat-item">
                     <i class="ri-heart-3-line"></i>
                     <span>${(manga.follows || 0).toLocaleString()} Pembaca</span>
                   </div>
+                  `}
                   <div class="stat-item">
                     <i class="ri-information-line"></i>
                     <span style="text-transform: capitalize;">${manga.status}</span>
@@ -549,7 +567,7 @@ const app = {
                   </div>
                 </div>
 
-                <div class="detail-description">${manga.description.replace(/\[\/?\w+\]/g, '')}</div>
+                <div class="detail-description">${(manga.description || '').replace(/\[\/?\w+\]/g, '')}</div>
 
                 <div class="detail-tags-wrap">${tagsHtml}</div>
 
@@ -557,6 +575,11 @@ const app = {
                   <button class="btn btn-primary" id="detail-read-first-btn">
                     <i class="ri-book-open-line"></i> Baca Chapter Pertama
                   </button>
+                  ${!isPill ? `
+                  <button class="btn btn-secondary" onclick="app.findCompleteSource('${encodeURIComponent(manga.title)}')">
+                    <i class="ri-archive-line"></i> Buka di Server Komplit
+                  </button>
+                  ` : ''}
                   <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${manga.id}')">
                     <i class="${isFav ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i>
                     <span>${isFav ? 'Tersimpan di Favorit' : 'Tambah ke Favorit'}</span>
@@ -583,8 +606,8 @@ const app = {
                   <option value="external">Hanya Link Eksternal</option>
                 </select>
                 <select class="filter-select" id="chapter-lang-filter" onchange="app.filterChapters()">
-                  <option value="all">Semua Bahasa</option>
-                  <option value="en" selected>English (EN)</option>
+                  <option value="all" ${isPill ? 'selected' : ''}>Semua Bahasa</option>
+                  <option value="en" ${!isPill ? 'selected' : ''}>English (EN)</option>
                   <option value="id">Indonesia (ID)</option>
                 </select>
                 <select class="filter-select" id="chapter-sort-order" onchange="app.sortChapters(this.value)">
@@ -645,8 +668,9 @@ const app = {
 
     list.innerHTML = '';
     const internalChapters = chapters.filter((c) => !c.isExternal);
+    const displayList = chapters.slice(0, this.chaptersDisplayLimit || 80);
 
-    chapters.forEach((ch) => {
+    displayList.forEach((ch) => {
       const isRead = State.isChapterRead(ch.id);
       const row = document.createElement('div');
       row.className = `chapter-row ${isRead ? 'read' : ''}`;
@@ -663,7 +687,7 @@ const app = {
           <div>
             <div class="chapter-row-title">${ch.title ? ch.title : 'Chapter ' + (ch.chapter || '0')}</div>
             <div class="chapter-row-group">
-              ${ch.group}
+              ${ch.group || (ch.source === 'mangapill' ? 'MangaPill Complete Archive' : 'Scanlation')}
               ${ch.isExternal ? '<span style="color: #38bdf8; margin-left: 6px;">[Eksternal]</span>' : ''}
             </div>
           </div>
@@ -682,6 +706,18 @@ const app = {
 
       list.appendChild(row);
     });
+
+    if (chapters.length > displayList.length) {
+      const moreBtn = document.createElement('button');
+      moreBtn.className = 'btn btn-secondary';
+      moreBtn.style.cssText = 'grid-column: 1 / -1; margin: 16px auto; display: block; border-radius: var(--radius-full); padding: 8px 24px; font-weight: 600;';
+      moreBtn.innerHTML = `<i class="ri-arrow-down-line"></i> Tampilkan 100 Chapter Selanjutnya (Menampilkan ${displayList.length} dari ${chapters.length})`;
+      moreBtn.onclick = () => {
+        this.chaptersDisplayLimit = (this.chaptersDisplayLimit || 80) + 100;
+        this.renderChaptersList(chapters);
+      };
+      list.appendChild(moreBtn);
+    }
   },
 
   filterChapters() {
@@ -832,6 +868,18 @@ const app = {
     }, 150);
   },
 
+  switchSource(src) {
+    this.activeSource = src;
+    const pageInput = document.getElementById('search-page-input');
+    const q = pageInput ? pageInput.value.trim() : '';
+    this.renderSearchView({ q });
+  },
+
+  findCompleteSource(mangaTitle) {
+    this.activeSource = 'mangapill';
+    this.navigate('search', { q: decodeURIComponent(mangaTitle) });
+  },
+
   async performSearch(q) {
     this.navigate('search', { q });
   },
@@ -840,25 +888,42 @@ const app = {
     const view = document.getElementById('search-view');
     view.style.display = 'block';
 
+    const isPill = this.activeSource === 'mangapill';
+    const currentQ = params.q || '';
+
     view.innerHTML = `
       <div class="section-container">
         <!-- Prominent Mobile & Desktop Search Bar -->
-        <div class="search-page-bar" style="margin-bottom: 24px;">
+        <div class="search-page-bar" style="margin-bottom: 16px;">
           <div class="search-input-wrapper" style="max-width: 600px; margin: 0 auto;">
             <i class="ri-search-line search-icon"></i>
-            <input type="text" id="search-page-input" value="${params.q || ''}" placeholder="Cari judul komik, manhwa, atau author..." />
-            ${params.q ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
+            <input type="text" id="search-page-input" value="${currentQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author...'}" />
+            ${currentQ ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
           </div>
+        </div>
+
+        <!-- Server Selector Bar -->
+        <div class="source-selector-bar" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;">
+          <button class="btn btn-sm ${!isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('mangadex')">
+            <i class="ri-fire-fill"></i> Server 1: MangaDex (Official)
+          </button>
+          <button class="btn btn-sm ${isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('mangapill')">
+            <i class="ri-archive-line"></i> Server 2: MangaPill (Chapter Komplit 100%)
+          </button>
         </div>
 
         <div class="section-header">
           <div class="section-title-wrap">
-            <i class="ri-search-line title-icon"></i>
-            <h2>${params.q ? `Hasil: "${params.q}"` : 'Jelajahi & Cari Komik'}</h2>
+            <i class="${isPill ? 'ri-archive-line' : 'ri-search-line'} title-icon"></i>
+            <h2>${currentQ ? `Hasil: "${currentQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}</h2>
           </div>
+          ${!isPill ? `
           <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
             <i class="ri-sound-module-line"></i> Filter & Opsi
           </button>
+          ` : `
+          <span style="font-size: 0.82rem; color: #10b981; font-weight: 600;"><i class="ri-check-double-line"></i> Semua chapter dapat dibaca langsung</span>
+          `}
         </div>
         <div class="manga-grid" id="search-results-grid">
           <div class="manga-card skeleton-card"></div>
@@ -880,14 +945,20 @@ const app = {
     }
 
     try {
-      const queryParams = {
-        q: params.q || '',
-        sort: this.selectedSort,
-        status: this.selectedStatus,
-        tags: Array.from(this.selectedFilterTags).join(',')
-      };
+      let res;
+      if (this.activeSource === 'mangapill') {
+        const queryText = params.q || 'one piece';
+        res = await Api.searchMangaPill(queryText);
+      } else {
+        const queryParams = {
+          q: params.q || '',
+          sort: this.selectedSort,
+          status: this.selectedStatus,
+          tags: Array.from(this.selectedFilterTags).join(',')
+        };
+        res = await Api.search(queryParams);
+      }
 
-      const res = await Api.search(queryParams);
       const grid = document.getElementById('search-results-grid');
       grid.innerHTML = '';
 
