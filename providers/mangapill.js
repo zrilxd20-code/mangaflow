@@ -101,15 +101,27 @@ async function searchMangaPill(query, page = 1) {
  * @param {string} slug 
  */
 async function getMangaPillDetail(id, slug = '') {
-  const cleanId = String(id).replace(/^pill-/, '');
-  const url = `${BASE_URL}/manga/${cleanId}/${slug || ''}`;
+  let cleanId = String(id).replace(/^pill-/, '');
+  if (!slug && cleanId.includes('/')) {
+    const parts = cleanId.split('/');
+    cleanId = parts[0];
+    slug = parts[1];
+  } else if (!slug && cleanId.includes('__')) {
+    const parts = cleanId.split('__');
+    cleanId = parts[0];
+    slug = parts[1];
+  }
+
+  // Never append trailing slash if slug is empty (MangaPill gives 404 for trailing slash without slug)
+  const url = slug ? `${BASE_URL}/manga/${cleanId}/${slug}` : `${BASE_URL}/manga/${cleanId}`;
 
   const res = await fetch(url, {
     headers: {
       'User-Agent': USER_AGENT,
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     },
-    signal: AbortSignal.timeout(8000)
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10000)
   });
 
   if (!res.ok) {
@@ -211,15 +223,27 @@ async function getMangaPillDetail(id, slug = '') {
  * @param {string} slug 
  */
 async function getMangaPillChapter(chapterId, slug = '') {
-  const cleanChId = String(chapterId).replace(/^pill-/, '');
-  const url = `${BASE_URL}/chapters/${cleanChId}/${slug || ''}`;
+  let cleanChId = String(chapterId).replace(/^pill-/, '');
+  if (!slug && cleanChId.includes('/')) {
+    const parts = cleanChId.split('/');
+    cleanChId = parts[0];
+    slug = parts[1];
+  } else if (!slug && cleanChId.includes('__')) {
+    const parts = cleanChId.split('__');
+    cleanChId = parts[0];
+    slug = parts[1];
+  }
+
+  // Never append trailing slash if slug is empty (MangaPill gives 404 for trailing slash without slug)
+  const url = slug ? `${BASE_URL}/chapters/${cleanChId}/${slug}` : `${BASE_URL}/chapters/${cleanChId}`;
 
   const res = await fetch(url, {
     headers: {
       'User-Agent': USER_AGENT,
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     },
-    signal: AbortSignal.timeout(8000)
+    redirect: 'follow',
+    signal: AbortSignal.timeout(10000)
   });
 
   if (!res.ok) {

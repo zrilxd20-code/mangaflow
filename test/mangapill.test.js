@@ -10,7 +10,7 @@ async function runTests() {
   console.log('====================================================\n');
 
   let passed = 0;
-  let total = 4;
+  let total = 5;
 
   try {
     // 1. Test Search
@@ -45,7 +45,7 @@ async function runTests() {
     }
 
     // 4. Test Image Proxy Routing
-    console.log('\n--- [4/4] UJI STREAMING PROXY GAMBAR MANGA ---');
+    console.log('\n--- [4/5] UJI STREAMING PROXY GAMBAR MANGA ---');
     const sampleProxyPath = chapterRes.data.pages[0].proxyUrl;
     const proxyRes = await fetch(`http://localhost:3000${sampleProxyPath}`);
     if (proxyRes.ok && (proxyRes.headers.get('content-type') || '').includes('image')) {
@@ -53,6 +53,17 @@ async function runTests() {
       passed++;
     } else {
       console.error(`  🔴 [FAIL] Proxy gambar gagal: Status ${proxyRes.status}`);
+    }
+
+    // 5. Test Slug-less Detail & Chapter (Anti-404 Regression Test)
+    console.log('\n--- [5/5] UJI RESOLUSI DETAIL & CHAPTER TANPA SLUG (ANTI-404) ---');
+    const noSlugRes = await mangapill.getMangaPillDetail('2');
+    const noSlugChRes = await mangapill.getMangaPillChapter(firstCh.pillChapterId);
+    if (noSlugRes.success && noSlugRes.data.title && noSlugChRes.success && noSlugChRes.data.totalPages > 0) {
+      console.log(`  🟢 [PASS] Resolusi ID murni tanpa slug berhasil (Bebas HTTP 404: "${noSlugRes.data.title}", ${noSlugChRes.data.totalPages} Halaman)`);
+      passed++;
+    } else {
+      console.error('  🔴 [FAIL] Resolusi ID tanpa slug gagal memuat');
     }
 
   } catch (err) {
