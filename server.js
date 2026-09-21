@@ -309,7 +309,7 @@ app.post('/api/auth/register', registerLimiter.middleware(), async (req, res) =>
   try {
     const { username, email, password } = req.body || {};
     const result = await db.createUser(username, email, password);
-    res.json({ success: true, ...result });
+    res.status(201).json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -420,7 +420,13 @@ app.get('/api/search', async (req, res) => {
     params.append('contentRating[]', 'suggestive');
     params.set('hasAvailableChapters', 'true');
 
-    if (q.trim()) params.set('title', q.trim());
+    const cleanQ = q.replace(/<[^>]*>/g, '').replace(/[<>"'&]/g, '').trim();
+    if (q.trim() && !cleanQ) {
+      // Entire query was HTML/script tags
+      return res.json({ success: true, data: [], total: 0, source: 'sanitized' });
+    }
+
+    if (cleanQ) params.set('title', cleanQ);
     if (status) params.append('status[]', status);
 
     if (tags) {

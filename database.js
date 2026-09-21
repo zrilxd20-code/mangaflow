@@ -242,6 +242,18 @@ class Database {
       history: this.data.history[userId] || []
     };
   }
+
+  deleteUser(userId) {
+    this.data.users = this.data.users.filter((u) => u.id !== userId);
+    for (const [token, sess] of Object.entries(this.data.sessions)) {
+      if (sess.userId === userId) {
+        delete this.data.sessions[token];
+      }
+    }
+    delete this.data.bookmarks[userId];
+    delete this.data.history[userId];
+    this.persist();
+  }
 }
 
 module.exports = new Database();

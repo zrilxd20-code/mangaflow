@@ -10,24 +10,6 @@
       "createdAt": "2026-09-15T14:17:07.585Z"
     },
     {
-      "id": "807ebf50-b586-4dbd-9b5e-d1b5b34b9673",
-      "username": "sec_test_1789516540153",
-      "email": "sec_test_1789516540153@example.com",
-      "passwordHash": "e8466b3e59f5eb375bde4ad7acba4e0ff54dbb1af8fba4ecae1b76b5081556602a5b6edc38c312a84caf69d972bb821b681c40b6375658e87b7ef76997baef0c",
-      "salt": "1dcf8540db316aedd92c443de55d55fa",
-      "avatar": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"16\" fill=\"%236366f1\"/><text x=\"50%\" y=\"54%\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\" dominant-baseline=\"middle\">S</text></svg>",
-      "createdAt": "2026-09-15T23:55:40.237Z"
-    },
-    {
-      "id": "e79a0926-aa35-4042-9074-fcb39716dd3e",
-      "username": "sec_user_1789516562248",
-      "email": "sec_user_1789516562248@example.com",
-      "passwordHash": "ab41a1a5ff153f0f7d78745d356c4f65ea1cec2406ac07a58ab08b3cfba1dae7cd595f4f52d993f7b2cbcd7b12ce3f072effa155052f1561e76d5c88f42c63ac",
-      "salt": "de7bfc00e03f5ef157562d8398f6f44e",
-      "avatar": "data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 64 64\"><rect width=\"64\" height=\"64\" rx=\"16\" fill=\"%236366f1\"/><text x=\"50%\" y=\"54%\" font-family=\"sans-serif\" font-size=\"28\" font-weight=\"bold\" fill=\"white\" text-anchor=\"middle\" dominant-baseline=\"middle\">S</text></svg>",
-      "createdAt": "2026-09-15T23:56:02.298Z"
-    },
-    {
       "id": "0dfb8884-f831-447f-aee8-51e72a1ae5af",
       "username": "ZRILXD",
       "email": "zrilxd20@gmail.com",
@@ -42,30 +24,6 @@
       "userId": "b97194bd-b4d5-4e15-ba8e-5696ce7dfa29",
       "expiresAt": 1792073827609
     },
-    "fd85da3f68e71e20634af14a09b4c4b04b386385e7a0935877107c3679177b5c": {
-      "userId": "b97194bd-b4d5-4e15-ba8e-5696ce7dfa29",
-      "expiresAt": 1792073827746
-    },
-    "4dae1f077ce4705d827c0ebc38a135c51aea5cef6eedf3ead416fe983641a518": {
-      "userId": "b97194bd-b4d5-4e15-ba8e-5696ce7dfa29",
-      "expiresAt": 1792073883265
-    },
-    "986668f43179251449f801352ce1d557088d2f47c0513274e66be808c307a3af": {
-      "userId": "807ebf50-b586-4dbd-9b5e-d1b5b34b9673",
-      "expiresAt": 1792108540244
-    },
-    "19f508ef479994e0be2aeaa0dd29387cca89f1d4726ca93373d2528f1923cba5": {
-      "userId": "807ebf50-b586-4dbd-9b5e-d1b5b34b9673",
-      "expiresAt": 1792108540310
-    },
-    "eeb2ebc25ae4c5ddba20323083c3f723fac770e06680337d1bf6c7a19b467b11": {
-      "userId": "e79a0926-aa35-4042-9074-fcb39716dd3e",
-      "expiresAt": 1792108562303
-    },
-    "d1f970bc97f81eb426b26d7489ad3cd42aa3c260b8640b3e2768ac541dba547e": {
-      "userId": "e79a0926-aa35-4042-9074-fcb39716dd3e",
-      "expiresAt": 1792108562357
-    },
     "bdfdd5a1e28db095619be4924d88b1f2b002d98b7b0f1857f68ccdb1b9ca8867": {
       "userId": "0dfb8884-f831-447f-aee8-51e72a1ae5af",
       "expiresAt": 1792113069295
@@ -79,8 +37,6 @@
         "status": "ongoing"
       }
     ],
-    "807ebf50-b586-4dbd-9b5e-d1b5b34b9673": [],
-    "e79a0926-aa35-4042-9074-fcb39716dd3e": [],
     "0dfb8884-f831-447f-aee8-51e72a1ae5af": []
   },
   "history": {
@@ -94,8 +50,6 @@
         "totalPages": 20
       }
     ],
-    "807ebf50-b586-4dbd-9b5e-d1b5b34b9673": [],
-    "e79a0926-aa35-4042-9074-fcb39716dd3e": [],
     "0dfb8884-f831-447f-aee8-51e72a1ae5af": [
       {
         "mangaId": "57fe3f00-8626-462b-8f75-fce0e6faa6be",
