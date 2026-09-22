@@ -9,4 +9,4 @@ Disallow: /api/manga/
 # Crawl Delay to prevent server overload
 Crawl-delay: 1
 
-Sitemap: /sitemap.xml
+Sitemap: https://mangaflow-two.vercel.app/sitemap.xml
