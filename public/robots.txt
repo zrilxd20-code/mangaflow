@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Disallow API and proxy internals from wasting crawl budget
+Disallow: /api/
+Disallow: /api/proxy/
+Disallow: /api/manga/
+
+# Crawl Delay to prevent server overload
+Crawl-delay: 1
+
+Sitemap: /sitemap.xml
