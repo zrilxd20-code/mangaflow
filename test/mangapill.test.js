@@ -2,12 +2,19 @@
 // MangaPill Provider Integration & Completeness Tests
 // ===================================================
 
+const http = require('http');
+const app = require('../server');
 const mangapill = require('../providers/mangapill');
 
 async function runTests() {
   console.log('\n====================================================');
   console.log('📚 MEMULAI PENGUJIAN PROVIDER LENGKAP (MANGAPILL)');
   console.log('====================================================\n');
+
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, resolve));
+  const port = server.address().port;
+  const baseUrl = `http://localhost:${port}`;
 
   let passed = 0;
   let total = 5;
@@ -47,7 +54,7 @@ async function runTests() {
     // 4. Test Image Proxy Routing
     console.log('\n--- [4/5] UJI STREAMING PROXY GAMBAR MANGA ---');
     const sampleProxyPath = chapterRes.data.pages[0].proxyUrl;
-    const proxyRes = await fetch(`http://localhost:3000${sampleProxyPath}`);
+    const proxyRes = await fetch(`${baseUrl}${sampleProxyPath}`);
     if (proxyRes.ok && (proxyRes.headers.get('content-type') || '').includes('image')) {
       console.log(`  🟢 [PASS] Proxy gambar MangaPill berhasil mengalirkan gambar (HTTP ${proxyRes.status}, Content-Type: ${proxyRes.headers.get('content-type')})`);
       passed++;
@@ -68,6 +75,8 @@ async function runTests() {
 
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kesalahan saat pengujian:', err.message);
+  } finally {
+    server.close();
   }
 
   console.log('\n====================================================');
@@ -76,6 +85,8 @@ async function runTests() {
 
   if (passed !== total) {
     process.exit(1);
+  } else {
+    process.exit(0);
   }
 }
 

@@ -167,7 +167,11 @@ async function runSecurityAudit() {
     console.error('Error saat audit keamanan:', err);
   } finally {
     server.close();
-    process.exit(0);
+    if (passedTests !== totalTests || totalTests === 0) {
+      process.exit(1);
+    } else {
+      process.exit(0);
+    }
   }
 }
 

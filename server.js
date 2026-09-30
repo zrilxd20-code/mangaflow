@@ -37,14 +37,17 @@ async function resolveDoH(hostname) {
 }
 
 // Prefetch and periodically refresh DoH cache
-setTimeout(() => {
+const prefetchTimeout = setTimeout(() => {
   resolveDoH('api.mangadex.org').catch(() => {});
   resolveDoH('uploads.mangadex.org').catch(() => {});
 }, 1000);
-setInterval(() => {
+if (prefetchTimeout.unref) prefetchTimeout.unref();
+
+const prefetchInterval = setInterval(() => {
   resolveDoH('api.mangadex.org').catch(() => {});
   resolveDoH('uploads.mangadex.org').catch(() => {});
 }, 3600 * 1000);
+if (prefetchInterval.unref) prefetchInterval.unref();
 
 const origLookup = dns.lookup;
 dns.lookup = function (hostname, options, callback) {
