@@ -14,6 +14,7 @@ yarn-error.log*
 *.tmp
 .DS_Store
 Thumbs.db
+.agents/
 
 # Optional: Local user database (biarkan template kosong jika mau di-commit, atau exclude data sensitif)
 data/*.tmp

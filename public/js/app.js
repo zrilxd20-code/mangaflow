@@ -21,6 +21,7 @@ const app = {
     this.bindGlobalEvents();
     this.updateBadgeCounts();
     this.updateAuthUI();
+    this.initPWA();
 
     // Initial data load
     await Promise.allSettled([
@@ -127,6 +128,15 @@ const app = {
 
   initRouter() {
     window.addEventListener('hashchange', () => this.handleHashChange());
+
+    // Deep-linking via query parameter ?manga=<id>
+    const searchParams = new URLSearchParams(window.location.search);
+    const mangaId = searchParams.get('manga');
+    if (mangaId) {
+      this.navigate('manga', { id: mangaId }, false);
+      return;
+    }
+
     // Process initial route if provided
     if (window.location.hash && window.location.hash !== '#/' && window.location.hash !== '#') {
       this.handleHashChange();
@@ -507,38 +517,63 @@ const app = {
     `;
 
     try {
-      const [mangaRes, chaptersRes] = await Promise.all([
+      const [mangaRes, chaptersRes, socialRes] = await Promise.all([
         Api.getManga(mangaId),
-        Api.getChapters(mangaId, State.settings.languages.join(','))
+        Api.getChapters(mangaId, State.settings.languages.join(',')),
+        Api.getMangaSocial(mangaId).catch(() => ({
+          success: true,
+          data: { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] }
+        }))
       ]);
 
       const manga = mangaRes.data;
       const chapters = chaptersRes.data || [];
+      const social = socialRes?.data || { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] };
       this.selectedManga = manga;
+      this.currentMangaSocial = social;
 
       const isFav = State.isBookmarked(manga.id);
+      const isLiked = social.userLiked || State.isMangaLikedLocally(manga.id);
+      const likesCount = Math.max(social.likesCount || 0, isLiked ? 1 : 0);
+      const userRating = social.userRating || 0;
       const isPill = manga.source === 'mangapill' || String(manga.id).startsWith('pill-');
       const tagsHtml = (manga.tags || [])
-        .map((t) => `<span class="detail-tag">${t}</span>`)
+        .map((t) => `<span class="detail-tag">${this.escapeHtml(t)}</span>`)
+        .join('');
+
+      const starsHtml = [1, 2, 3, 4, 5]
+        .map(
+          (star) => `
+            <button type="button" class="rate-star-btn ${star <= userRating ? 'active' : ''}" onclick="app.submitMangaRating('${manga.id}', ${star})" title="Beri ${star} Bintang">
+              <i class="${star <= userRating ? 'ri-star-fill' : 'ri-star-line'}"></i>
+            </button>
+          `
+        )
         .join('');
 
       view.innerHTML = `
         <div class="detail-container">
           <!-- Backdrop Header -->
           <div class="detail-header">
-            <img class="detail-backdrop" src="${manga.coverUrl}" alt="${manga.title}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
+            <img class="detail-backdrop" src="${manga.coverUrl}" alt="${this.escapeHtml(manga.title)}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
             <div class="detail-header-inner">
               <div class="detail-cover-box">
-                <img class="detail-cover-img" src="${manga.coverUrl}" alt="${manga.title}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
+                <img class="detail-cover-img" src="${manga.coverUrl}" alt="${this.escapeHtml(manga.title)}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
               </div>
               <div class="detail-main-info">
-                <h1 class="detail-title">${manga.title}</h1>
-                <div class="detail-alt-titles">${(manga.altTitles || []).join(' • ')}</div>
+                <h1 class="detail-title">${this.escapeHtml(manga.title)}</h1>
+                <div class="detail-alt-titles">${(manga.altTitles || []).map((t) => this.escapeHtml(t)).join(' • ')}</div>
 
                 <div class="detail-stats-bar">
-                  <div class="stat-item">
+                  <div class="stat-item" title="Rating Global">
                     <i class="ri-star-fill" style="color: #fbbf24;"></i>
                     <span>${manga.rating || '8.5'} / 10</span>
+                  </div>
+                  <div class="stat-item" id="detail-community-rating-stat" title="Rating Komunitas MangaFlow">
+                    <i class="ri-award-fill" style="color: #a855f7;"></i>
+                    <span id="detail-community-rating-text">
+                      ${social.ratingAvg ? `${social.ratingAvg} / 5 (${social.ratingCount} Suara)` : 'Belum ada rating komunitas'}
+                    </span>
                   </div>
                   ${isPill ? `
                   <div class="stat-item" style="color: #10b981; font-weight: 700;">
@@ -547,13 +582,13 @@ const app = {
                   </div>
                   ` : `
                   <div class="stat-item">
-                    <i class="ri-heart-3-line"></i>
+                    <i class="ri-book-mark-line"></i>
                     <span>${(manga.follows || 0).toLocaleString()} Pembaca</span>
                   </div>
                   `}
                   <div class="stat-item">
                     <i class="ri-information-line"></i>
-                    <span style="text-transform: capitalize;">${manga.status}</span>
+                    <span style="text-transform: capitalize;">${this.escapeHtml(manga.status)}</span>
                   </div>
                   <div class="stat-item">
                     <i class="ri-calendar-line"></i>
@@ -561,7 +596,18 @@ const app = {
                   </div>
                 </div>
 
-                <div class="detail-description">${(manga.description || '').replace(/\[\/?\w+\]/g, '')}</div>
+                <!-- Interactive User Star Rating Bar -->
+                <div class="community-rate-bar">
+                  <span class="rate-bar-label"><i class="ri-sparkling-line"></i> Beri Rating Anda:</span>
+                  <div class="rate-stars-group" id="detail-rate-stars">
+                    ${starsHtml}
+                  </div>
+                  <span class="rate-user-badge" id="detail-user-rating-label">
+                    ${userRating ? `Pilihan Anda: ${userRating}/5 ⭐` : 'Klik bintang (1-5)'}
+                  </span>
+                </div>
+
+                <div class="detail-description">${this.escapeHtml((manga.description || '').replace(/\[\/?\w+\]/g, ''))}</div>
 
                 <div class="detail-tags-wrap">${tagsHtml}</div>
 
@@ -577,6 +623,11 @@ const app = {
                   <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${manga.id}')">
                     <i class="${isFav ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i>
                     <span>${isFav ? 'Tersimpan di Favorit' : 'Tambah ke Favorit'}</span>
+                  </button>
+                  <button class="btn btn-secondary btn-like ${isLiked ? 'liked' : ''}" id="detail-like-btn" onclick="app.toggleLikeDetail('${manga.id}')">
+                    <i class="${isLiked ? 'ri-heart-3-fill' : 'ri-heart-3-line'}"></i>
+                    <span id="detail-like-label">${isLiked ? 'Disukai' : 'Suka'}</span>
+                    <span class="like-counter-pill" id="detail-like-count">${likesCount}</span>
                   </button>
                   <button class="btn btn-secondary" onclick="app.shareManga()">
                     <i class="ri-share-line"></i> Bagikan
@@ -613,11 +664,42 @@ const app = {
 
             <div class="chapters-grid" id="chapters-list-grid"></div>
           </div>
+
+          <!-- Community Comments & Discussion Section -->
+          <div class="comments-section" id="manga-comments-section">
+            <div class="chapters-header-bar">
+              <div class="section-title-wrap">
+                <i class="ri-chat-smile-3-line title-icon"></i>
+                <h2>Komentar & Diskusi Pembaca (<span id="comments-total-count">${(social.comments || []).length}</span>)</h2>
+              </div>
+            </div>
+
+            <form class="comment-form" onsubmit="app.submitMangaComment(event, '${manga.id}')">
+              <textarea
+                id="manga-comment-input"
+                class="comment-textarea"
+                rows="3"
+                maxlength="600"
+                placeholder="${State.isLoggedIn() ? `Tulis pendapat atau review Anda tentang ${manga.title}...` : 'Masuk ke akun MangaFlow untuk ikut berkomentar dan berdiskusi...'}"
+              ></textarea>
+              <div class="comment-form-footer">
+                <span class="comment-hint">
+                  ${State.isLoggedIn() ? `<i class="ri-user-smile-line"></i> Berkomentar sebagai <strong>${this.escapeHtml(State.user.username)}</strong>` : '<i class="ri-information-line"></i> Login diperlukan agar komentar tersimpan dengan nama akun Anda.'}
+                </span>
+                <button type="submit" class="btn btn-primary btn-sm" id="manga-comment-submit-btn">
+                  <i class="ri-send-plane-fill"></i> Kirim Komentar
+                </button>
+              </div>
+            </form>
+
+            <div class="comments-list" id="manga-comments-list"></div>
+          </div>
         </div>
       `;
 
       this.currentChaptersList = chapters;
       this.filterChapters();
+      this.renderCommentsList(manga.id, social.comments || []);
 
       // Read first chapter button logic
       const firstBtn = document.getElementById('detail-read-first-btn');
@@ -755,17 +837,37 @@ const app = {
   },
 
   // ---------------- Library / Favorites View ----------------
-  renderLibraryView() {
+  renderLibraryView(filterQuery = '') {
     const view = document.getElementById('library-view');
     view.style.display = 'block';
     const bookmarks = State.getBookmarks();
+    const cleanFilter = (filterQuery || '').trim().toLowerCase();
+    const filteredBookmarks = cleanFilter
+      ? bookmarks.filter((b) => (b.title || '').toLowerCase().includes(cleanFilter))
+      : bookmarks;
 
     view.innerHTML = `
       <div class="section-container">
-        <div class="section-header">
+        <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
           <div class="section-title-wrap">
             <i class="ri-bookmark-3-fill title-icon"></i>
             <h2>Koleksi Favorit (${bookmarks.length})</h2>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            ${
+              bookmarks.length > 0
+                ? `<div class="search-input-wrapper" style="flex: 1 1 180px; max-width: 240px; min-width: 140px;">
+                     <i class="ri-search-line search-icon"></i>
+                     <input type="text" id="library-filter-input" value="${this.escapeHtml(filterQuery)}" placeholder="Filter koleksi..." oninput="app.filterLibraryGrid(this.value)" />
+                   </div>`
+                : ''
+            }
+            <button class="btn btn-secondary btn-sm" onclick="app.exportBackup()" title="Simpan cadangan Favorit & Riwayat ke file .json">
+              <i class="ri-download-2-line"></i> Backup Data
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="app.triggerImportBackup()" title="Pulihkan Favorit & Riwayat dari file .json">
+              <i class="ri-upload-2-line"></i> Restore Data
+            </button>
           </div>
         </div>
         ${
@@ -773,8 +875,11 @@ const app = {
             ? `<div style="text-align: center; padding: 60px 0; color: var(--text-dim);">
                  <i class="ri-bookmark-line" style="font-size: 3rem; margin-bottom: 12px; display: block;"></i>
                  <h3>Belum ada manga yang disimpan</h3>
-                 <p style="margin: 8px 0 20px 0;">Klik ikon bookmark pada manga untuk menyimpannya ke koleksi Anda.</p>
-                 <button class="btn btn-primary" onclick="app.navigate('home')">Jelajahi Manga</button>
+                 <p style="margin: 8px 0 20px 0;">Klik ikon bookmark pada manga untuk menyimpannya ke koleksi Anda, atau pulihkan dari file Backup.</p>
+                 <div style="display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+                   <button class="btn btn-primary" onclick="app.navigate('home')">Jelajahi Manga</button>
+                   <button class="btn btn-secondary" onclick="app.triggerImportBackup()"><i class="ri-upload-2-line"></i> Restore dari Backup</button>
+                 </div>
                </div>`
             : `<div class="manga-grid" id="library-grid"></div>`
         }
@@ -782,12 +887,37 @@ const app = {
     `;
 
     if (bookmarks.length > 0) {
-      const grid = document.getElementById('library-grid');
-      bookmarks.forEach((item) => {
-        const card = this.createMangaCard(item);
-        grid.appendChild(card);
-      });
+      this.populateLibraryGrid(filteredBookmarks);
     }
+  },
+
+  filterLibraryGrid(query) {
+    const bookmarks = State.getBookmarks();
+    const cleanFilter = (query || '').trim().toLowerCase();
+    const filtered = cleanFilter
+      ? bookmarks.filter((b) => (b.title || '').toLowerCase().includes(cleanFilter))
+      : bookmarks;
+    this.populateLibraryGrid(filtered);
+  },
+
+  populateLibraryGrid(items) {
+    const grid = document.getElementById('library-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    if (!items.length) {
+      grid.innerHTML = `
+        <div style="grid-column: 1 / -1; text-align: center; padding: 40px 0; color: var(--text-dim);">
+          Tidak ada komik favorit yang cocok dengan pencarian Anda.
+        </div>
+      `;
+      return;
+    }
+
+    items.forEach((item) => {
+      const card = this.createMangaCard(item);
+      grid.appendChild(card);
+    });
   },
 
   // ---------------- History View ----------------
@@ -798,12 +928,17 @@ const app = {
 
     view.innerHTML = `
       <div class="section-container">
-        <div class="section-header">
+        <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
           <div class="section-title-wrap">
             <i class="ri-history-line title-icon"></i>
             <h2>Riwayat Membaca (${history.length})</h2>
           </div>
-          ${history.length ? '<button class="btn btn-secondary" onclick="app.clearHistory()"><i class="ri-delete-bin-line"></i> Hapus Riwayat</button>' : ''}
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="app.exportBackup()">
+              <i class="ri-download-2-line"></i> Backup Data
+            </button>
+            ${history.length ? '<button class="btn btn-secondary btn-sm" onclick="app.clearHistory()"><i class="ri-delete-bin-line"></i> Hapus Semua</button>' : ''}
+          </div>
         </div>
         ${
           history.length === 0
@@ -823,21 +958,35 @@ const app = {
       history.forEach((item) => {
         const card = document.createElement('div');
         card.className = 'continue-card';
+        card.style.position = 'relative';
         card.onclick = () => this.navigate('manga', { id: item.mangaId });
 
         card.innerHTML = `
-          <img class="continue-thumb" src="${item.coverUrl}" alt="${item.mangaTitle}" />
+          <img class="continue-thumb" src="${item.coverUrl}" alt="${this.escapeHtml(item.mangaTitle)}" />
           <div class="continue-info">
-            <div class="continue-title">${item.mangaTitle}</div>
-            <div class="continue-sub">Chapter ${item.chapterNum} (Hal. ${item.page}/${item.totalPages})</div>
+            <div class="continue-title" style="padding-right: 24px;">${this.escapeHtml(item.mangaTitle)}</div>
+            <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${item.page}/${item.totalPages})</div>
             <button class="btn btn-primary continue-btn" onclick="event.stopPropagation(); app.resumeReading('${item.mangaId}', '${item.chapterId}')">
               <i class="ri-play-fill"></i> Lanjutkan
             </button>
           </div>
+          <button
+            type="button"
+            class="history-item-remove-btn"
+            title="Hapus dari riwayat"
+            onclick="event.stopPropagation(); app.removeSingleHistory('${item.mangaId}')"
+          >
+            <i class="ri-close-line"></i>
+          </button>
         `;
         grid.appendChild(card);
       });
     }
+  },
+
+  removeSingleHistory(mangaId) {
+    State.removeHistoryItem(mangaId);
+    this.showToast('Item dihapus dari riwayat baca');
   },
 
   clearHistory() {
@@ -1274,22 +1423,40 @@ const app = {
     const count = State.getBookmarks().length;
     const badge = document.getElementById('nav-fav-count');
     if (badge) {
-      badge.textContent = count;
+      badge.textContent = count > 99 ? '99+' : count;
       badge.style.display = count > 0 ? 'inline-block' : 'none';
+    }
+    const mobBadge = document.getElementById('mob-fav-count');
+    if (mobBadge) {
+      mobBadge.textContent = count > 99 ? '99+' : count;
+      mobBadge.style.display = count > 0 ? 'inline-flex' : 'none';
     }
   },
 
   shareManga() {
-    if (navigator.share && this.selectedManga) {
+    if (!this.selectedManga) return;
+    const shareUrl = `${window.location.origin}/?manga=${encodeURIComponent(this.selectedManga.id)}`;
+
+    if (navigator.share) {
       navigator.share({
         title: this.selectedManga.title,
         text: `Baca ${this.selectedManga.title} di MangaFlow`,
-        url: window.location.href
+        url: shareUrl
       }).catch(() => {});
-    } else {
-      navigator.clipboard.writeText(window.location.href).then(() => {
+    } else if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareUrl).then(() => {
         this.showToast('Link manga disalin ke clipboard!');
+      }).catch(() => {
+        this.showToast('Gagal menyalin link.');
       });
+    } else {
+      const tempInput = document.createElement('input');
+      tempInput.value = shareUrl;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      document.execCommand('copy');
+      document.body.removeChild(tempInput);
+      this.showToast('Link manga disalin ke clipboard!');
     }
   },
 
@@ -1416,6 +1583,9 @@ const app = {
         State.setAuth(res.user, res.token, res.data);
         this.toggleAuthModal(false);
         this.showToast(`Selamat datang kembali, ${res.user.username}!`);
+        if (this.currentView === 'manga' && this.selectedManga) {
+          this.renderMangaDetailView(this.selectedManga.id);
+        }
       }
     } catch (err) {
       this.showToast(err.message || 'Gagal masuk. Periksa kembali username/password.');
@@ -1447,6 +1617,9 @@ const app = {
         State.setAuth(res.user, res.token);
         this.toggleAuthModal(false);
         this.showToast(`Akun berhasil dibuat! Selamat membaca, ${res.user.username}!`);
+        if (this.currentView === 'manga' && this.selectedManga) {
+          this.renderMangaDetailView(this.selectedManga.id);
+        }
       }
     } catch (err) {
       this.showToast(err.message || 'Gagal membuat akun.');
@@ -1462,6 +1635,9 @@ const app = {
     this.toggleUserMenu(false);
     State.logout();
     this.showToast('Anda telah keluar akun.');
+    if (this.currentView === 'manga' && this.selectedManga) {
+      this.renderMangaDetailView(this.selectedManga.id);
+    }
   },
 
   async syncNow() {
@@ -1473,14 +1649,300 @@ const app = {
 
     this.showToast('Menyinkronkan data...');
     try {
-      const res = await Api.syncUserData(State.getBookmarks(), State.getHistory());
+      const res = await Api.syncUserData(State.getBookmarks(), State.getHistory(), {
+        removedBookmarkIds: Array.from(State.pendingRemovedBookmarks),
+        removedHistoryIds: Array.from(State.pendingRemovedHistory),
+        replaceHistory: State.pendingReplaceHistory,
+        settings: State.settings
+      });
       if (res.success && res.data) {
+        State.pendingRemovedBookmarks.clear();
+        State.pendingRemovedHistory.clear();
+        State.pendingReplaceHistory = false;
         State.mergeCloudData(res.data);
-        this.showToast('Data favorit & riwayat berhasil disinkronkan ke cloud!');
+        this.showToast('Data favorit, riwayat & preferensi berhasil disinkronkan ke cloud!');
       }
     } catch (err) {
       this.showToast('Gagal sinkron: ' + err.message);
     }
+  },
+
+  // ---------------- Community Social Handlers (Likes, Ratings, Comments) ----------------
+  async toggleLikeDetail(mangaId) {
+    if (!mangaId) return;
+
+    if (!State.isLoggedIn()) {
+      // Allow local like toggle even without login, plus prompt that login syncs to cloud
+      const currentlyLiked = State.isMangaLikedLocally(mangaId);
+      const nextLiked = !currentlyLiked;
+      State.setMangaLikedLocally(mangaId, nextLiked);
+
+      const btn = document.getElementById('detail-like-btn');
+      const countEl = document.getElementById('detail-like-count');
+      const labelEl = document.getElementById('detail-like-label');
+      const baseCount = this.currentMangaSocial?.likesCount || 0;
+      const displayCount = Math.max(0, baseCount + (nextLiked ? 1 : 0));
+
+      if (btn) {
+        btn.classList.toggle('liked', nextLiked);
+        const icon = btn.querySelector('i');
+        if (icon) icon.className = nextLiked ? 'ri-heart-3-fill' : 'ri-heart-3-line';
+      }
+      if (labelEl) labelEl.textContent = nextLiked ? 'Disukai' : 'Suka';
+      if (countEl) countEl.textContent = displayCount;
+
+      this.showToast(nextLiked ? 'Disukai ❤️ (Masuk akun untuk simpan ke Cloud)' : 'Batal menyukai manga');
+      return;
+    }
+
+    try {
+      const res = await Api.toggleMangaLike(mangaId);
+      if (res.success && res.data) {
+        const { liked, likesCount } = res.data;
+        State.setMangaLikedLocally(mangaId, liked);
+        if (this.currentMangaSocial) {
+          this.currentMangaSocial.userLiked = liked;
+          this.currentMangaSocial.likesCount = likesCount;
+        }
+
+        const btn = document.getElementById('detail-like-btn');
+        const countEl = document.getElementById('detail-like-count');
+        const labelEl = document.getElementById('detail-like-label');
+
+        if (btn) {
+          btn.classList.toggle('liked', liked);
+          const icon = btn.querySelector('i');
+          if (icon) icon.className = liked ? 'ri-heart-3-fill' : 'ri-heart-3-line';
+        }
+        if (labelEl) labelEl.textContent = liked ? 'Disukai' : 'Suka';
+        if (countEl) countEl.textContent = likesCount;
+
+        this.showToast(liked ? 'Anda menyukai komik ini ❤️' : 'Suka dihapus');
+      }
+    } catch (err) {
+      this.showToast('Gagal menyimpan suka: ' + err.message);
+    }
+  },
+
+  async submitMangaRating(mangaId, score) {
+    if (!State.isLoggedIn()) {
+      this.showToast('Silakan masuk akun untuk memberi rating bintang ⭐');
+      this.openAuthModal('login');
+      return;
+    }
+
+    try {
+      const res = await Api.rateManga(mangaId, score);
+      if (res.success && res.data) {
+        const { userRating, ratingAvg, ratingCount } = res.data;
+        if (this.currentMangaSocial) {
+          this.currentMangaSocial.userRating = userRating;
+          this.currentMangaSocial.ratingAvg = ratingAvg;
+          this.currentMangaSocial.ratingCount = ratingCount;
+        }
+
+        const starsGroup = document.getElementById('detail-rate-stars');
+        if (starsGroup) {
+          starsGroup.innerHTML = [1, 2, 3, 4, 5]
+            .map(
+              (star) => `
+                <button type="button" class="rate-star-btn ${star <= userRating ? 'active' : ''}" onclick="app.submitMangaRating('${mangaId}', ${star})" title="Beri ${star} Bintang">
+                  <i class="${star <= userRating ? 'ri-star-fill' : 'ri-star-line'}"></i>
+                </button>
+              `
+            )
+            .join('');
+        }
+
+        const userLabel = document.getElementById('detail-user-rating-label');
+        if (userLabel) userLabel.textContent = `Pilihan Anda: ${userRating}/5 ⭐`;
+
+        const commStat = document.getElementById('detail-community-rating-text');
+        if (commStat) {
+          commStat.textContent = ratingAvg ? `${ratingAvg} / 5 (${ratingCount} Suara)` : 'Belum ada rating komunitas';
+        }
+
+        this.showToast(`Terima kasih! Anda memberi rating ${userRating}/5 bintang ⭐`);
+      }
+    } catch (err) {
+      this.showToast('Gagal mengirim rating: ' + err.message);
+    }
+  },
+
+  async submitMangaComment(e, mangaId) {
+    e.preventDefault();
+    if (!State.isLoggedIn()) {
+      this.showToast('Silakan masuk akun untuk mengirim komentar');
+      this.openAuthModal('login');
+      return;
+    }
+
+    const input = document.getElementById('manga-comment-input');
+    const submitBtn = document.getElementById('manga-comment-submit-btn');
+    if (!input) return;
+
+    const text = input.value.trim();
+    if (!text) {
+      this.showToast('Tulis isi komentar terlebih dahulu');
+      return;
+    }
+
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const res = await Api.addMangaComment(mangaId, text);
+      if (res.success && res.data) {
+        input.value = '';
+        const comments = res.data.comments || [];
+        if (this.currentMangaSocial) {
+          this.currentMangaSocial.comments = comments;
+        }
+        this.renderCommentsList(mangaId, comments);
+        this.showToast('Komentar berhasil dikirim!');
+      }
+    } catch (err) {
+      this.showToast(err.message || 'Gagal mengirim komentar');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  },
+
+  async deleteMangaComment(mangaId, commentId) {
+    if (!State.isLoggedIn()) return;
+    try {
+      const res = await Api.deleteMangaComment(mangaId, commentId);
+      if (res.success && res.data) {
+        const comments = res.data.comments || [];
+        if (this.currentMangaSocial) {
+          this.currentMangaSocial.comments = comments;
+        }
+        this.renderCommentsList(mangaId, comments);
+        this.showToast('Komentar telah dihapus');
+      }
+    } catch (err) {
+      this.showToast(err.message || 'Gagal menghapus komentar');
+    }
+  },
+
+  renderCommentsList(mangaId, comments = []) {
+    const listEl = document.getElementById('manga-comments-list');
+    const countEl = document.getElementById('comments-total-count');
+    if (countEl) countEl.textContent = comments.length;
+    if (!listEl) return;
+
+    if (!comments.length) {
+      listEl.innerHTML = `
+        <div class="comments-empty">
+          <i class="ri-chat-3-line"></i>
+          <p>Belum ada komentar untuk manga ini. Jadilah yang pertama berkomentar!</p>
+        </div>
+      `;
+      return;
+    }
+
+    const currentUserId = State.user?.id || null;
+    listEl.innerHTML = comments
+      .map((c) => {
+        const isOwn = currentUserId && c.userId === currentUserId;
+        const safeName = this.escapeHtml(c.username || 'Pembaca');
+        const safeText = this.escapeHtml(c.text || '');
+        const fallbackAvatar = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="%236366f1"/><text x="50%" y="54%" font-family="sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">${safeName.charAt(0).toUpperCase()}</text></svg>`;
+
+        return `
+          <div class="comment-card">
+            <img class="comment-avatar" src="${c.avatar || fallbackAvatar}" alt="${safeName}" />
+            <div class="comment-body">
+              <div class="comment-header">
+                <span class="comment-author">${safeName}</span>
+                <span class="comment-time">${this.formatRelativeTime(c.createdAt)}</span>
+                ${
+                  isOwn
+                    ? `<button type="button" class="comment-delete-btn" onclick="app.deleteMangaComment('${mangaId}', '${c.id}')" title="Hapus komentar saya">
+                         <i class="ri-delete-bin-line"></i>
+                       </button>`
+                    : ''
+                }
+              </div>
+              <div class="comment-text">${safeText}</div>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
+  },
+
+  // ---------------- Backup Export & Import Handlers ----------------
+  exportBackup() {
+    this.toggleUserMenu(false);
+    try {
+      const backup = State.exportBackupData();
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `mangaflow-backup-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      this.showToast('File Backup (.json) berhasil diunduh!');
+    } catch (err) {
+      this.showToast('Gagal mengekspor backup: ' + err.message);
+    }
+  },
+
+  triggerImportBackup() {
+    this.toggleUserMenu(false);
+    const fileInput = document.getElementById('backup-file-input');
+    if (fileInput) {
+      fileInput.value = '';
+      fileInput.click();
+    }
+  },
+
+  handleBackupFileImport(event) {
+    const file = event.target?.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        const stats = State.importBackupData(parsed);
+        this.updateBadgeCounts();
+        if (this.currentView === 'library') {
+          this.renderLibraryView();
+        }
+        this.showToast(`Restore berhasil! (${stats.bookmarksCount} Favorit, ${stats.historyCount} Riwayat)`);
+      } catch (err) {
+        this.showToast('Gagal memulihkan file backup: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  },
+
+  // ---------------- Utility Helpers ----------------
+  escapeHtml(str) {
+    return String(str ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  },
+
+  formatRelativeTime(timestamp) {
+    if (!timestamp) return 'Baru saja';
+    const diffSeconds = Math.floor((Date.now() - Number(timestamp)) / 1000);
+    if (diffSeconds < 60) return 'Baru saja';
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) return `${diffMinutes} menit lalu`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} jam lalu`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 30) return `${diffDays} hari lalu`;
+    return new Date(Number(timestamp)).toLocaleDateString('id-ID');
   },
 
   showToast(message) {
@@ -1496,8 +1958,122 @@ const app = {
       toast.style.transition = 'all 0.3s ease';
       setTimeout(() => toast.remove(), 300);
     }, 2800);
+  },
+
+  // ---------------- PWA 1-Click App Installation ----------------
+  initPWA() {
+    this.isStandalone = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      (typeof navigator !== 'undefined' && navigator.standalone === true);
+
+    this.isIOS = typeof navigator !== 'undefined' && (
+      /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
+
+    window.addEventListener('appinstalled', () => {
+      window.deferredInstallPrompt = null;
+      this.updatePWAUI();
+      this.showToast('Aplikasi MangaFlow berhasil dipasang!');
+    });
+
+    if (window.deferredInstallPrompt) {
+      this.handleInstallPromptReady(window.deferredInstallPrompt);
+    } else {
+      this.updatePWAUI();
+    }
+  },
+
+  handleInstallPromptReady(e) {
+    window.deferredInstallPrompt = e;
+    this.updatePWAUI();
+  },
+
+  updatePWAUI() {
+    const installBtn = document.getElementById('btn-install-app');
+    const userMenuItem = document.getElementById('user-menu-install-item');
+    const banner = document.getElementById('pwa-install-banner');
+
+    if (this.isStandalone) {
+      if (installBtn) installBtn.style.display = 'none';
+      if (userMenuItem) userMenuItem.style.display = 'none';
+      if (banner) banner.style.display = 'none';
+      return;
+    }
+
+    const canInstall = Boolean(window.deferredInstallPrompt) || this.isIOS;
+
+    if (canInstall) {
+      if (installBtn) installBtn.style.display = 'inline-flex';
+      if (userMenuItem) userMenuItem.style.display = 'flex';
+      if (banner) {
+        let dismissed = false;
+        try {
+          dismissed = localStorage.getItem('mangaflow_pwa_banner_dismissed') === 'true';
+        } catch (_) {}
+        banner.style.display = dismissed ? 'none' : 'flex';
+      }
+    } else {
+      if (installBtn) installBtn.style.display = 'none';
+      if (userMenuItem) userMenuItem.style.display = 'none';
+      if (banner) banner.style.display = 'none';
+    }
+  },
+
+  async promptInstallApp() {
+    const dropdown = document.getElementById('user-dropdown-menu');
+    if (dropdown && dropdown.classList.contains('open')) {
+      dropdown.classList.remove('open');
+    }
+
+    if (window.deferredInstallPrompt) {
+      const promptEvent = window.deferredInstallPrompt;
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          this.showToast('Memulai pemasangan aplikasi MangaFlow...');
+        }
+      } catch (err) {
+        console.warn('[PWA Install Prompt Error]:', err);
+      } finally {
+        window.deferredInstallPrompt = null;
+        this.updatePWAUI();
+      }
+    } else if (this.isIOS) {
+      this.toggleIosInstallModal(true);
+    } else if (this.isStandalone) {
+      this.showToast('Aplikasi MangaFlow sudah terpasang');
+    } else {
+      this.showToast('Gunakan menu browser untuk menginstall aplikasi');
+    }
+  },
+
+  dismissInstallBanner() {
+    try {
+      localStorage.setItem('mangaflow_pwa_banner_dismissed', 'true');
+    } catch (_) {}
+    const banner = document.getElementById('pwa-install-banner');
+    if (banner) {
+      banner.style.opacity = '0';
+      banner.style.transform = 'translateY(-8px)';
+      banner.style.transition = 'all 0.25s ease';
+      setTimeout(() => {
+        banner.style.display = 'none';
+      }, 250);
+    }
+  },
+
+  toggleIosInstallModal(show) {
+    const modal = document.getElementById('ios-install-modal');
+    if (!modal) return;
+    modal.style.display = show ? 'flex' : 'none';
   }
 };
+
+// Expose app to window for inline handlers & early install capture
+if (typeof window !== 'undefined') {
+  window.app = app;
+}
 
 // Initialize Application when DOM ready
 document.addEventListener('DOMContentLoaded', () => {

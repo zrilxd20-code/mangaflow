@@ -74,5 +74,15 @@
         "updatedAt": 1789462237742
       }
     ]
+  },
+  "settings": {},
+  "likes": {
+    "test-manga-1": []
+  },
+  "ratings": {
+    "test-manga-1": {}
+  },
+  "comments": {
+    "test-manga-1": []
   }
 }

@@ -45,6 +45,27 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="alternate icon" type="image/png" href="/favicon.svg" />
   
+  <!-- PWA & Mobile Web Capabilities -->
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/favicon.svg" />
+  <meta name="theme-color" content="#08090d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MangaFlow" />
+
+  <!-- Early PWA Install Prompt Capture -->
+  <script>
+    window.deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.deferredInstallPrompt = e;
+      if (window.app && window.app.handleInstallPromptReady) {
+        window.app.handleInstallPromptReady(e);
+      }
+    });
+  </script>
+  
   <!-- Google Fonts: Outfit, Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -176,6 +197,12 @@
           </div>
         </div>
 
+        <!-- PWA 1-Click Install App Button -->
+        <button class="btn-install-app" id="btn-install-app" style="display: none;" title="Install Aplikasi MangaFlow" onclick="app.promptInstallApp()">
+          <i class="ri-smartphone-line"></i>
+          <span>Install App</span>
+        </button>
+
         <!-- User Authentication & Cloud Sync Pill -->
         <div class="nav-auth-wrap" id="nav-auth-wrap">
           <button class="auth-nav-btn" id="btn-open-auth" onclick="app.openAuthModal()">
@@ -195,13 +222,23 @@
                 <div class="ud-email" id="dropdown-user-email">email@test.com</div>
               </div>
               <button class="user-menu-item" onclick="app.syncNow()">
-                <i class="ri-cloud-line"></i> Sinkronkan Data
+                <i class="ri-cloud-line"></i> Sinkronkan Data Cloud
+              </button>
+              <button class="user-menu-item" onclick="app.exportBackup()">
+                <i class="ri-download-2-line"></i> Export Backup (.json)
+              </button>
+              <button class="user-menu-item" onclick="app.triggerImportBackup()">
+                <i class="ri-upload-2-line"></i> Restore Backup (.json)
+              </button>
+              <button class="user-menu-item" id="user-menu-install-item" onclick="app.promptInstallApp()">
+                <i class="ri-smartphone-line"></i> Install Aplikasi
               </button>
               <button class="user-menu-item logout" onclick="app.handleLogout()">
                 <i class="ri-logout-box-r-line"></i> Keluar Akun
               </button>
             </div>
           </div>
+          <input type="file" id="backup-file-input" accept=".json,application/json" style="display: none;" onchange="app.handleBackupFileImport(event)" />
         </div>
       </div>
     </div>
@@ -255,6 +292,21 @@
   <main id="app-viewport">
     <!-- View will be rendered here dynamically -->
     <div id="home-view" class="view-section active">
+      <!-- Sleek Mobile & Desktop PWA Install Banner -->
+      <div class="pwa-install-banner" id="pwa-install-banner" style="display: none;">
+        <div class="pwa-banner-left">
+          <div class="pwa-banner-icon"><i class="ri-smartphone-line"></i></div>
+          <div class="pwa-banner-text">
+            <strong>Install Aplikasi MangaFlow</strong>
+            <span>Baca lebih cepat, layar penuh & hemat kuota tanpa iklan</span>
+          </div>
+        </div>
+        <div class="pwa-banner-actions">
+          <button class="btn btn-primary btn-sm" onclick="app.promptInstallApp()">Install</button>
+          <button class="pwa-banner-close" onclick="app.dismissInstallBanner()" title="Tutup"><i class="ri-close-line"></i></button>
+        </div>
+      </div>
+
       <!-- Hero Banner Carousel -->
       <section class="hero-section" id="hero-container">
         <div class="hero-loading skeleton-hero"></div>
@@ -811,6 +863,7 @@
     <button class="mobile-nav-item" id="mob-nav-library" onclick="app.navigate('library')">
       <i class="ri-bookmark-3-line"></i>
       <span>Favorit</span>
+      <span class="mob-badge-count" id="mob-fav-count" style="display:none">0</span>
     </button>
     <button class="mobile-nav-item" id="mob-nav-history" onclick="app.navigate('history')">
       <i class="ri-history-line"></i>
@@ -818,10 +871,63 @@
     </button>
   </nav>
 
+  <!-- iOS Safari PWA Installation Guide Modal -->
+  <div class="modal-backdrop" id="ios-install-modal" style="display: none;" onclick="if(event.target === this) app.toggleIosInstallModal(false)">
+    <div class="modal-box ios-modal-box">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="ri-apple-fill" style="color: #fff; font-size: 1.4rem;"></i>
+          <h3>Pasang MangaFlow di iPhone / iPad</h3>
+        </div>
+        <button class="modal-close" onclick="app.toggleIosInstallModal(false)"><i class="ri-close-line"></i></button>
+      </div>
+      <div class="modal-body ios-modal-body">
+        <p class="ios-install-intro">Nikmati pengalaman membaca komik layar penuh, lebih cepat, dan hemat kuota tanpa bilah browser.</p>
+        <div class="ios-install-steps">
+          <div class="ios-step-item">
+            <div class="ios-step-num">1</div>
+            <div class="ios-step-content">
+              <div class="ios-step-title">Ketuk tombol Bagikan (Share)</div>
+              <div class="ios-step-desc">Tekan ikon <span class="ios-badge-icon"><i class="ri-share-box-line"></i></span> di bilah menu Safari (bawah pada iPhone, atas pada iPad).</div>
+            </div>
+          </div>
+          <div class="ios-step-item">
+            <div class="ios-step-num">2</div>
+            <div class="ios-step-content">
+              <div class="ios-step-title">Pilih "Tambah ke Layar Utama"</div>
+              <div class="ios-step-desc">Gulir ke bawah dan pilih opsi <span class="ios-badge-icon"><i class="ri-add-box-line"></i> Tambah ke Layar Utama</span>.</div>
+            </div>
+          </div>
+          <div class="ios-step-item">
+            <div class="ios-step-num">3</div>
+            <div class="ios-step-content">
+              <div class="ios-step-title">Ketuk "Tambah" (Add)</div>
+              <div class="ios-step-desc">Ketuk tombol <strong>Tambah</strong> di sudut kanan atas layar untuk menyelesaikan.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" style="width: 100%;" onclick="app.toggleIosInstallModal(false)">Mengerti</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Application Scripts -->
   <script src="./js/state.js"></script>
   <script src="./js/api.js"></script>
   <script src="./js/reader.js"></script>
   <script src="./js/app.js"></script>
+  
+  <!-- Service Worker Registration for PWA & Offline Support -->
+  <script>
+    if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch((err) => {
+          console.warn('[SW Registration failed]:', err);
+        });
+      });
+    }
+  </script>
 </body>
 </html>

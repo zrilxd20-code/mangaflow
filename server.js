@@ -3,6 +3,7 @@ const cors = require('cors');
 const compression = require('compression');
 const NodeCache = require('node-cache');
 const path = require('path');
+const fs = require('fs');
 const dns = require('dns');
 const { Readable } = require('stream');
 const db = require('./database');
@@ -87,6 +88,148 @@ app.use((req, res, next) => {
 app.use(cors());
 app.use(compression());
 app.use(express.json({ limit: '500kb' }));
+app.use((err, req, res, next) => {
+  if (err && (err.type === 'entity.too.large' || err.status === 413)) {
+    return res.status(413).json({ success: false, error: 'Ukuran payload melebihi batas maksimum (500KB).' });
+  }
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    return res.status(400).json({ success: false, error: 'Format JSON tidak valid.' });
+  }
+  next(err);
+});
+
+// ----------------------------------------------------
+// SEO SITEMAP, ROBOTS.TXT & DYNAMIC OPENGRAPH PREVIEW
+// ----------------------------------------------------
+function escapeAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+app.get('/robots.txt', (req, res) => {
+  const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
+  res.status(200).type('text/plain').send(
+    `User-agent: *\nAllow: /\nDisallow: /api/auth/\nSitemap: ${host}/sitemap.xml\n`
+  );
+});
+
+app.get('/sitemap.xml', async (req, res) => {
+  const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
+  let mangaList = cache.get('trending_manga') || cache.get('popular_manga') || [];
+
+  if (!Array.isArray(mangaList) || mangaList.length === 0) {
+    mangaList = [
+      { id: 'pill-2' },
+      { id: 'pill-1896' },
+      { id: 'pill-1442' },
+      { id: 'a1c7c817-4e59-43b7-9365-09675a149a6f' },
+      { id: 'c52b2ce3-7f95-469c-96b0-479524fb7a1a' }
+    ];
+  }
+
+  const nowIso = new Date().toISOString();
+
+  const urls = [
+    `<url><loc>${host}/</loc><changefreq>hourly</changefreq><priority>1.0</priority><lastmod>${nowIso}</lastmod></url>`,
+    ...mangaList.slice(0, 20).map((m) =>
+      `<url><loc>${host}/?manga=${encodeURIComponent(m.id)}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>`
+    )
+  ];
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  ${urls.join('\n  ')}\n</urlset>`;
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.status(200).send(xml);
+});
+
+// Dynamic OpenGraph Preview when sharing /?manga=<id> on WhatsApp, Discord, Telegram, X
+app.get('/', async (req, res, next) => {
+  const mangaId = req.query.manga;
+  if (!mangaId || typeof mangaId !== 'string') {
+    return next();
+  }
+
+  const trimmedId = mangaId.trim();
+  if (!trimmedId) {
+    return next();
+  }
+
+  try {
+    let mangaData = cache.get(`manga_detail_${trimmedId}`) || cache.get(`pill:manga:${trimmedId.replace(/^pill-/, '')}`);
+    if (!mangaData) {
+      if (trimmedId.startsWith('pill-')) {
+        const cleanId = trimmedId.replace(/^pill-/, '');
+        const pillRes = await mangapill.getMangaPillDetail(cleanId);
+        mangaData = pillRes?.data;
+        if (mangaData) {
+          cache.set(`pill:manga:${cleanId}`, mangaData, 900);
+          cache.set(`manga_detail_${trimmedId}`, mangaData, 900);
+        }
+      } else if (/^\d+$/.test(trimmedId)) {
+        // Pure numeric IDs via MangaPill
+        const pillRes = await mangapill.getMangaPillDetail(trimmedId);
+        mangaData = pillRes?.data;
+        if (mangaData) {
+          cache.set(`pill:manga:${trimmedId}`, mangaData, 900);
+          cache.set(`manga_detail_pill-${trimmedId}`, mangaData, 900);
+          cache.set(`manga_detail_${trimmedId}`, mangaData, 900);
+        }
+      } else if (/^[0-9a-f-]{20,40}$/i.test(trimmedId)) {
+        // UUIDs via MangaDex
+        const url = `https://api.mangadex.org/manga/${trimmedId}?includes[]=cover_art`;
+        const data = await resilientFetch(url);
+        if (data?.data) {
+          mangaData = formatManga(data.data);
+          if (mangaData) {
+            cache.set(`manga_detail_${trimmedId}`, mangaData, 1800);
+          }
+        }
+      } else {
+        return next();
+      }
+    }
+
+    if (!mangaData || !mangaData.title) return next();
+
+    const htmlPath = path.join(__dirname, 'public', 'index.html');
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
+    const safeTitle = escapeAttr(`Baca ${mangaData.title} Bahasa Indonesia & HD - MangaFlow`);
+    const cleanDesc = (mangaData.description || 'Baca manga, manhwa, dan manhua online gratis tanpa iklan di MangaFlow.')
+      .replace(/\[\/?\w+\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+    const safeDesc = escapeAttr(cleanDesc);
+    const coverImg = mangaData.coverUrl?.startsWith('/')
+      ? `${host}${mangaData.coverUrl}`
+      : (mangaData.coverUrl || `${host}/favicon.svg`);
+    const safeCover = escapeAttr(coverImg);
+    const shareUrl = escapeAttr(`${host}/?manga=${encodeURIComponent(trimmedId)}`);
+
+    html = html
+      .replace(/<title>.*?<\/title>/i, () => `<title>${safeTitle}</title>`)
+      .replace(/<meta\s+name="description"\s+content=".*?"\s*\/?>/i, () => `<meta name="description" content="${safeDesc}" />`)
+      .replace(/<link\s+rel="canonical"\s+href=".*?"\s*\/?>/i, () => `<link rel="canonical" href="${shareUrl}" />`)
+      .replace(/<meta\s+property="og:type"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:type" content="article" />`)
+      .replace(/<meta\s+property="og:url"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:url" content="${shareUrl}" />`)
+      .replace(/<meta\s+property="og:title"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:title" content="${safeTitle}" />`)
+      .replace(/<meta\s+property="og:description"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:description" content="${safeDesc}" />`)
+      .replace(/<meta\s+property="og:image"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:image" content="${safeCover}" />`)
+      .replace(/<meta\s+name="twitter:card"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:card" content="summary_large_image" />`)
+      .replace(/<meta\s+name="twitter:title"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:title" content="${safeTitle}" />`)
+      .replace(/<meta\s+name="twitter:description"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:description" content="${safeDesc}" />`)
+      .replace(/<meta\s+name="twitter:image"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:image" content="${safeCover}" />`);
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(200).send(html);
+  } catch (_) {
+    return next();
+  }
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ----------------------------------------------------
@@ -220,7 +363,9 @@ async function resilientFetch(url, options = {}, retries = 3, backoff = 1000) {
         if (!res.ok) {
           if (attempt === retries || (res.status >= 400 && res.status < 500 && res.status !== 429)) {
             const errText = await res.text();
-            throw new Error(`HTTP ${res.status}: ${errText.slice(0, 120)}`);
+            const clientErr = new Error(`HTTP ${res.status}: ${errText.slice(0, 120)}`);
+            clientErr.noRetry = true;
+            throw clientErr;
           }
           await new Promise((r) => setTimeout(r, backoff * attempt));
           continue;
@@ -228,7 +373,7 @@ async function resilientFetch(url, options = {}, retries = 3, backoff = 1000) {
 
         return await res.json();
       } catch (err) {
-        if (attempt === retries) throw err;
+        if (attempt === retries || err.noRetry) throw err;
         console.warn(`[Fetch Retry ${attempt}/${retries}] ${url} failed: ${err.message}`);
         await new Promise((r) => setTimeout(r, backoff * attempt));
       }
@@ -336,15 +481,39 @@ app.post('/api/auth/login', loginLimiter.middleware(), async (req, res) => {
 // 0.3 Get Current User Profile
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const userData = db.getUserData(req.user.id);
-  res.json({ success: true, user: req.user, data: userData });
+  res.json({
+    success: true,
+    user: req.user,
+    data: userData,
+    storageMode: db.getStorageMode()
+  });
 });
 
-// 0.4 Sync Bookmarks & Reading History
+// 0.4 Sync Bookmarks, Reading History & Settings
 app.post('/api/auth/sync', requireAuth, (req, res) => {
   try {
-    const { bookmarks = [], history = [] } = req.body || {};
-    const synced = db.syncUserData(req.user.id, bookmarks, history);
-    res.json({ success: true, data: synced });
+    const {
+      bookmarks = [],
+      history = [],
+      replaceBookmarks = false,
+      replaceHistory = false,
+      removedBookmarkIds = [],
+      removedHistoryIds = [],
+      settings = null
+    } = req.body || {};
+
+    const synced = db.syncUserData(req.user.id, bookmarks, history, {
+      replaceBookmarks,
+      replaceHistory,
+      removedBookmarkIds,
+      removedHistoryIds,
+      settings
+    });
+    res.json({
+      success: true,
+      data: synced,
+      storageMode: db.getStorageMode()
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -356,6 +525,85 @@ app.post('/api/auth/logout', (req, res) => {
   const token = authHeader.replace(/^Bearer\s+/i, '');
   db.destroySession(token);
   res.json({ success: true, message: 'Berhasil keluar.' });
+});
+
+// 0.6 Database Storage Info
+app.get('/api/auth/storage-info', (req, res) => {
+  res.json({
+    success: true,
+    storageMode: db.getStorageMode(),
+    cloudConfigured: db.hasCloudConfig()
+  });
+});
+
+// ----------------------------------------------------
+// COMMUNITY SOCIAL ROUTES (LIKES, RATINGS, COMMENTS)
+// Works across both Server 1 (MangaDex) & Server 2 (MangaPill)
+// ----------------------------------------------------
+
+// Helper to optionally extract authenticated user
+function getOptionalUser(req) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  return token ? db.getUserByToken(token) : null;
+}
+
+// Get social stats & comments for a manga
+app.get('/api/manga/:id/social', (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = getOptionalUser(req);
+    const data = db.getMangaSocial(id, user ? user.id : null);
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Toggle Like (Suka) on a manga
+app.post('/api/manga/:id/like', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = db.toggleMangaLike(id, req.user.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Rate a manga (1 - 5 stars)
+app.post('/api/manga/:id/rate', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { score } = req.body || {};
+    const result = db.rateManga(id, req.user.id, score);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Post a comment / review on a manga
+app.post('/api/manga/:id/comments', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body || {};
+    const result = db.addMangaComment(id, req.user, text);
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Delete own comment on a manga
+app.delete('/api/manga/:id/comments/:commentId', requireAuth, (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const result = db.deleteMangaComment(id, commentId, req.user.id);
+    res.json({ success: true, data: result });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
 });
 
 // ----------------------------------------------------

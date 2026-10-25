@@ -1,12 +1,5 @@
 User-agent: *
 Allow: /
-
-# Disallow API and proxy internals from wasting crawl budget
-Disallow: /api/
-Disallow: /api/proxy/
-Disallow: /api/manga/
-
-# Crawl Delay to prevent server overload
-Crawl-delay: 1
+Disallow: /api/auth/
 
 Sitemap: https://mangaflow-two.vercel.app/sitemap.xml

@@ -6,12 +6,17 @@ const State = {
   BOOKMARKS_KEY: 'mangaflow_bookmarks',
   HISTORY_KEY: 'mangaflow_history',
   SETTINGS_KEY: 'mangaflow_settings',
+  LIKES_KEY: 'mangaflow_likes',
   AUTH_TOKEN_KEY: 'mangaflow_auth_token',
   AUTH_USER_KEY: 'mangaflow_auth_user',
 
   user: null,
   token: null,
   syncTimeout: null,
+  storageMode: 'local-disk',
+  pendingRemovedBookmarks: new Set(),
+  pendingRemovedHistory: new Set(),
+  pendingReplaceHistory: false,
 
   // Default Reader Settings
   settings: {
@@ -58,6 +63,7 @@ const State = {
               const res = await Api.getMe();
               if (res.success && res.user) {
                 this.user = res.user;
+                if (res.storageMode) this.storageMode = res.storageMode;
                 localStorage.setItem(this.AUTH_USER_KEY, JSON.stringify(res.user));
                 if (res.data) {
                   this.mergeCloudData(res.data);
@@ -91,6 +97,8 @@ const State = {
 
     if (serverData) {
       this.mergeCloudData(serverData);
+      // Push merged local+cloud state back to server
+      this.triggerBackgroundSync();
     } else {
       // Sync local bookmarks & history to newly logged in account
       this.triggerBackgroundSync();
@@ -107,6 +115,9 @@ const State = {
     }
     this.user = null;
     this.token = null;
+    this.pendingRemovedBookmarks.clear();
+    this.pendingRemovedHistory.clear();
+    this.pendingReplaceHistory = false;
     try {
       localStorage.removeItem(this.AUTH_TOKEN_KEY);
       localStorage.removeItem(this.AUTH_USER_KEY);
@@ -124,14 +135,20 @@ const State = {
   mergeCloudData(cloudData) {
     if (!cloudData) return;
 
-    // Merge bookmarks
+    // Merge bookmarks while respecting pending local deletions
     if (Array.isArray(cloudData.bookmarks)) {
       const local = this.getBookmarks();
       const map = new Map();
-      cloudData.bookmarks.forEach((b) => map.set(b.id, b));
-      local.forEach((b) => {
-        if (!map.has(b.id) || (b.addedAt && b.addedAt > (map.get(b.id).addedAt || 0))) {
+      cloudData.bookmarks.forEach((b) => {
+        if (b && b.id && !this.pendingRemovedBookmarks.has(b.id)) {
           map.set(b.id, b);
+        }
+      });
+      local.forEach((b) => {
+        if (b && b.id && !this.pendingRemovedBookmarks.has(b.id)) {
+          if (!map.has(b.id) || (b.addedAt && b.addedAt > (map.get(b.id).addedAt || 0))) {
+            map.set(b.id, b);
+          }
         }
       });
       const merged = Array.from(map.values());
@@ -140,14 +157,20 @@ const State = {
       } catch (_) {}
     }
 
-    // Merge history
-    if (Array.isArray(cloudData.history)) {
+    // Merge history while respecting pending local deletions
+    if (Array.isArray(cloudData.history) && !this.pendingReplaceHistory) {
       const local = this.getHistory();
       const map = new Map();
-      cloudData.history.forEach((h) => map.set(h.mangaId, h));
-      local.forEach((h) => {
-        if (!map.has(h.mangaId) || (h.updatedAt && h.updatedAt > (map.get(h.mangaId).updatedAt || 0))) {
+      cloudData.history.forEach((h) => {
+        if (h && h.mangaId && !this.pendingRemovedHistory.has(h.mangaId)) {
           map.set(h.mangaId, h);
+        }
+      });
+      local.forEach((h) => {
+        if (h && h.mangaId && !this.pendingRemovedHistory.has(h.mangaId)) {
+          if (!map.has(h.mangaId) || (h.updatedAt && h.updatedAt > (map.get(h.mangaId).updatedAt || 0))) {
+            map.set(h.mangaId, h);
+          }
         }
       });
       const mergedHistory = Array.from(map.values())
@@ -158,26 +181,58 @@ const State = {
       } catch (_) {}
     }
 
+    // Merge cloud settings if present
+    if (cloudData.settings && typeof cloudData.settings === 'object' && Object.keys(cloudData.settings).length > 0) {
+      this.settings = { ...this.settings, ...cloudData.settings };
+      try {
+        localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(this.settings));
+      } catch (_) {}
+    }
+
+    // Merge liked manga IDs if present
+    if (Array.isArray(cloudData.likedMangaIds)) {
+      const localLikes = this.getLocalLikes();
+      const mergedLikes = Array.from(new Set([...localLikes, ...cloudData.likedMangaIds]));
+      try {
+        localStorage.setItem(this.LIKES_KEY, JSON.stringify(mergedLikes));
+      } catch (_) {}
+    }
+
     if (typeof app !== 'undefined') {
-      app.updateBadgeCounts();
-      app.renderContinueReading();
+      app.updateBadgeCounts?.();
+      app.renderContinueReading?.();
+      if (app.currentView === 'library') {
+        app.renderLibraryView?.();
+      } else if (app.currentView === 'history') {
+        app.renderHistoryView?.();
+      }
     }
   },
 
-  triggerBackgroundSync() {
+  triggerBackgroundSync(immediateOptions = null) {
     if (!this.isLoggedIn() || typeof Api === 'undefined') return;
 
     clearTimeout(this.syncTimeout);
     this.syncTimeout = setTimeout(async () => {
+      const syncOptions = immediateOptions || {
+        removedBookmarkIds: Array.from(this.pendingRemovedBookmarks),
+        removedHistoryIds: Array.from(this.pendingRemovedHistory),
+        replaceHistory: this.pendingReplaceHistory,
+        settings: this.settings
+      };
+
       try {
-        const res = await Api.syncUserData(this.getBookmarks(), this.getHistory());
+        const res = await Api.syncUserData(this.getBookmarks(), this.getHistory(), syncOptions);
         if (res.success && res.data) {
-          // Cloud sync success
+          this.pendingRemovedBookmarks.clear();
+          this.pendingRemovedHistory.clear();
+          this.pendingReplaceHistory = false;
+          if (res.storageMode) this.storageMode = res.storageMode;
         }
       } catch (err) {
         console.warn('[Cloud Sync Error]:', err.message);
       }
-    }, 2000);
+    }, 800);
   },
 
   saveSettings() {
@@ -186,6 +241,32 @@ const State = {
     } catch (e) {
       console.warn('Failed to save settings:', e);
     }
+    this.triggerBackgroundSync();
+  },
+
+  // ---------------- Local Likes Cache ----------------
+  getLocalLikes() {
+    try {
+      return JSON.parse(localStorage.getItem(this.LIKES_KEY) || '[]');
+    } catch (e) {
+      return [];
+    }
+  },
+
+  isMangaLikedLocally(mangaId) {
+    return this.getLocalLikes().includes(mangaId);
+  },
+
+  setMangaLikedLocally(mangaId, liked) {
+    let list = this.getLocalLikes();
+    if (liked) {
+      if (!list.includes(mangaId)) list.push(mangaId);
+    } else {
+      list = list.filter((id) => id !== mangaId);
+    }
+    try {
+      localStorage.setItem(this.LIKES_KEY, JSON.stringify(list));
+    } catch (_) {}
   },
 
   // ---------------- Bookmarks ----------------
@@ -203,6 +284,7 @@ const State = {
   },
 
   toggleBookmark(manga) {
+    if (!manga || !manga.id) return false;
     let list = this.getBookmarks();
     const index = list.findIndex((item) => item.id === manga.id);
     let added = false;
@@ -210,15 +292,18 @@ const State = {
     if (index >= 0) {
       list.splice(index, 1);
       added = false;
+      this.pendingRemovedBookmarks.add(manga.id);
     } else {
       list.unshift({
         id: manga.id,
         title: manga.title,
         coverUrl: manga.coverUrlSmall || manga.coverUrl,
         status: manga.status,
+        source: manga.source || (String(manga.id).startsWith('pill-') ? 'mangapill' : 'mangadex'),
         addedAt: Date.now()
       });
       added = true;
+      this.pendingRemovedBookmarks.delete(manga.id);
     }
 
     try {
@@ -258,6 +343,8 @@ const State = {
       updatedAt: Date.now()
     });
 
+    this.pendingRemovedHistory.delete(manga.id);
+
     // Keep max 50 items
     if (list.length > 50) list = list.slice(0, 50);
 
@@ -268,14 +355,106 @@ const State = {
     this.triggerBackgroundSync();
   },
 
+  removeHistoryItem(mangaId) {
+    if (!mangaId) return;
+    const list = this.getHistory().filter((item) => item.mangaId !== mangaId);
+    this.pendingRemovedHistory.add(mangaId);
+
+    try {
+      localStorage.setItem(this.HISTORY_KEY, JSON.stringify(list));
+    } catch (_) {}
+
+    if (typeof app !== 'undefined') {
+      app.updateBadgeCounts?.();
+      app.renderContinueReading?.();
+      if (app.currentView === 'history') {
+        app.renderHistoryView?.();
+      }
+    }
+    this.triggerBackgroundSync();
+  },
+
   clearHistory() {
-    localStorage.removeItem(this.HISTORY_KEY);
+    try {
+      localStorage.removeItem(this.HISTORY_KEY);
+    } catch (_) {}
+    this.pendingReplaceHistory = true;
+    if (typeof app !== 'undefined') {
+      app.updateBadgeCounts?.();
+      app.renderContinueReading?.();
+      if (app.currentView === 'history') {
+        app.renderHistoryView?.();
+      }
+    }
+    this.triggerBackgroundSync({
+      replaceHistory: true,
+      settings: this.settings
+    });
   },
 
   isChapterRead(chapterId) {
     const list = this.getHistory();
     return list.some((h) => h.chapterId === chapterId);
+  },
+
+  // ---------------- Backup Export & Import (JSON) ----------------
+  exportBackupData() {
+    return {
+      app: 'MangaFlow',
+      version: '1.1.0',
+      exportedAt: new Date().toISOString(),
+      user: this.user ? { username: this.user.username, email: this.user.email } : null,
+      bookmarks: this.getBookmarks(),
+      history: this.getHistory(),
+      likes: this.getLocalLikes(),
+      settings: this.settings
+    };
+  },
+
+  importBackupData(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('File backup tidak valid.');
+    }
+    if (!Array.isArray(payload.bookmarks) && !Array.isArray(payload.history)) {
+      throw new Error('Format data backup MangaFlow tidak dikenali.');
+    }
+
+    this.mergeCloudData({
+      bookmarks: payload.bookmarks || [],
+      history: payload.history || [],
+      settings: payload.settings || null,
+      likedMangaIds: payload.likes || []
+    });
+
+    if (this.isLoggedIn()) {
+      this.triggerBackgroundSync({
+        replaceBookmarks: true,
+        replaceHistory: true,
+        settings: this.settings
+      });
+    }
+
+    return {
+      bookmarksCount: this.getBookmarks().length,
+      historyCount: this.getHistory().length
+    };
   }
 };
+
+// Global Online/Offline Network Resilience Handlers
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    State.triggerBackgroundSync();
+    if (typeof app !== 'undefined' && app.showToast) {
+      app.showToast('Koneksi internet pulih. Data tersinkronisasi.');
+    }
+  });
+
+  window.addEventListener('offline', () => {
+    if (typeof app !== 'undefined' && app.showToast) {
+      app.showToast('Koneksi terputus. Mode baca lokal aktif.');
+    }
+  });
+}
 
 State.init();

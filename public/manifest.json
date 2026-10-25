@@ -1,0 +1,30 @@
+{
+  "name": "MangaFlow - Baca Manga Online Modern & Minimalis",
+  "short_name": "MangaFlow",
+  "description": "Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, dan anti-blokir.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08090d",
+  "theme_color": "#08090d",
+  "categories": ["books", "entertainment"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

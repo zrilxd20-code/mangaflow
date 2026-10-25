@@ -57,11 +57,19 @@ const Api = {
     return this.request('/auth/me');
   },
 
-  async syncUserData(bookmarks, history) {
+  async syncUserData(bookmarks, history, options = {}) {
     return this.request('/auth/sync', {
       method: 'POST',
-      body: JSON.stringify({ bookmarks, history })
+      body: JSON.stringify({
+        bookmarks,
+        history,
+        ...options
+      })
     });
+  },
+
+  async getStorageInfo() {
+    return this.request('/auth/storage-info');
   },
 
   async logout() {
@@ -69,6 +77,37 @@ const Api = {
       await this.request('/auth/logout', { method: 'POST' });
     } catch (_) {}
     this.token = null;
+  },
+
+  // ---------------- Community Social (Likes, Ratings, Comments) ----------------
+  async getMangaSocial(mangaId) {
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/social`);
+  },
+
+  async toggleMangaLike(mangaId) {
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/like`, {
+      method: 'POST'
+    });
+  },
+
+  async rateManga(mangaId, score) {
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/rate`, {
+      method: 'POST',
+      body: JSON.stringify({ score })
+    });
+  },
+
+  async addMangaComment(mangaId, text) {
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ text })
+    });
+  },
+
+  async deleteMangaComment(mangaId, commentId) {
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/comments/${encodeURIComponent(commentId)}`, {
+      method: 'DELETE'
+    });
   },
 
   // 1. Trending

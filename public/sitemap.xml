@@ -2,20 +2,23 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://mangaflow-two.vercel.app/</loc>
-    <lastmod>2026-09-22</lastmod>
-    <changefreq>daily</changefreq>
+    <changefreq>hourly</changefreq>
     <priority>1.0</priority>
+    <lastmod>2026-10-24</lastmod>
   </url>
   <url>
-    <loc>https://mangaflow-two.vercel.app/#popular</loc>
-    <lastmod>2026-09-22</lastmod>
+    <loc>https://mangaflow-two.vercel.app/?manga=pill-2</loc>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://mangaflow-two.vercel.app/#latest</loc>
-    <lastmod>2026-09-22</lastmod>
-    <changefreq>hourly</changefreq>
-    <priority>0.9</priority>
+    <loc>https://mangaflow-two.vercel.app/?manga=pill-1896</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://mangaflow-two.vercel.app/?manga=pill-1442</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
   </url>
 </urlset>
