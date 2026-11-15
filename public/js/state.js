@@ -269,10 +269,36 @@ const State = {
     } catch (_) {}
   },
 
+  // ---------------- Cover URL Normalization ----------------
+  normalizeCoverUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    const trimmed = url.trim();
+    if (trimmed.startsWith('/api/proxy/image?url=%2Fapi%2Fproxy%2Fimage')) {
+      try {
+        const inner = new URL(trimmed, window.location.origin).searchParams.get('url');
+        if (inner && inner.startsWith('/api/proxy/image')) {
+          return inner;
+        }
+      } catch (_) {}
+    }
+    if (
+      trimmed.startsWith('https://uploads.mangadex.org/') ||
+      trimmed.startsWith('http://uploads.mangadex.org/') ||
+      trimmed.startsWith('https://cdn.readdetectiveconan.com/') ||
+      trimmed.startsWith('http://cdn.readdetectiveconan.com/')
+    ) {
+      return `/api/proxy/image?url=${encodeURIComponent(trimmed)}`;
+    }
+    return trimmed;
+  },
+
   // ---------------- Bookmarks ----------------
   getBookmarks() {
     try {
-      return JSON.parse(localStorage.getItem(this.BOOKMARKS_KEY) || '[]');
+      const list = JSON.parse(localStorage.getItem(this.BOOKMARKS_KEY) || '[]');
+      return Array.isArray(list)
+        ? list.map((item) => (item && item.coverUrl ? { ...item, coverUrl: this.normalizeCoverUrl(item.coverUrl) } : item))
+        : [];
     } catch (e) {
       return [];
     }
@@ -297,7 +323,7 @@ const State = {
       list.unshift({
         id: manga.id,
         title: manga.title,
-        coverUrl: manga.coverUrlSmall || manga.coverUrl,
+        coverUrl: this.normalizeCoverUrl(manga.coverUrlSmall || manga.coverUrl),
         status: manga.status,
         source: manga.source || (String(manga.id).startsWith('pill-') ? 'mangapill' : 'mangadex'),
         addedAt: Date.now()
@@ -317,7 +343,10 @@ const State = {
   // ---------------- Reading History ----------------
   getHistory() {
     try {
-      return JSON.parse(localStorage.getItem(this.HISTORY_KEY) || '[]');
+      const list = JSON.parse(localStorage.getItem(this.HISTORY_KEY) || '[]');
+      return Array.isArray(list)
+        ? list.map((item) => (item && item.coverUrl ? { ...item, coverUrl: this.normalizeCoverUrl(item.coverUrl) } : item))
+        : [];
     } catch (e) {
       return [];
     }
@@ -334,7 +363,7 @@ const State = {
     list.unshift({
       mangaId: manga.id,
       mangaTitle: manga.title,
-      coverUrl: manga.coverUrlSmall || manga.coverUrl,
+      coverUrl: this.normalizeCoverUrl(manga.coverUrlSmall || manga.coverUrl),
       chapterId: chapter.id,
       chapterNum: chapter.chapter || '0',
       chapterTitle: chapter.title || '',

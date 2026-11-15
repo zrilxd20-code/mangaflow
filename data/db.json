@@ -65,7 +65,7 @@
       {
         "mangaId": "23b51846-bec4-41e4-a9a2-a034064d01eb",
         "mangaTitle": "Yahari Ore no Seishun Love Come wa Machigatteiru @comic",
-        "coverUrl": "https://uploads.mangadex.org/covers/23b51846-bec4-41e4-a9a2-a034064d01eb/57be50e8-6ca7-4cc8-b09b-a869c550a80e.jpg.256.jpg",
+        "coverUrl": "/api/proxy/image?url=https%3A%2F%2Fuploads.mangadex.org%2Fcovers%2F23b51846-bec4-41e4-a9a2-a034064d01eb%2F57be50e8-6ca7-4cc8-b09b-a869c550a80e.jpg.256.jpg",
         "chapterId": "3c53aa61-3dcc-4794-aa70-c28ae28685c0",
         "chapterNum": "1.1",
         "chapterTitle": "",

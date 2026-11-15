@@ -41,7 +41,7 @@ async function resolveDoH(hostname) {
 const prefetchTimeout = setTimeout(() => {
   resolveDoH('api.mangadex.org').catch(() => {});
   resolveDoH('uploads.mangadex.org').catch(() => {});
-}, 1000);
+}, 10);
 if (prefetchTimeout.unref) prefetchTimeout.unref();
 
 const prefetchInterval = setInterval(() => {
@@ -430,6 +430,8 @@ function formatManga(item) {
     tags,
     coverUrl,
     coverUrlSmall,
+    rawCover,
+    rawCoverSmall,
     createdAt: attrs.createdAt,
     updatedAt: attrs.updatedAt
   };
@@ -1029,16 +1031,32 @@ app.get('/api/proxy/image', async (req, res) => {
     }
 
     const isMangaPill = hostname.includes('readdetectiveconan.com') || hostname.includes('mangapill.com');
-    const referer = isMangaPill ? 'https://mangapill.com/' : 'https://mangadex.org/';
+    const isMangaDex = hostname === 'mangadex.org' || hostname.endsWith('.mangadex.org') || hostname.endsWith('.mangadex.network');
 
-    const response = await fetch(imageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Referer: referer
-      }
-    });
+    const proxyHeaders = isMangaPill
+      ? {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Referer: 'https://mangapill.com/',
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+        }
+      : isMangaDex
+      ? {
+          'User-Agent': USER_AGENT,
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+        }
+      : {
+          'User-Agent': USER_AGENT
+        };
+
+    let response = await fetch(imageUrl, { headers: proxyHeaders });
+
+    if (!response.ok && hostname === 'uploads.mangadex.org' && /\.(256|512)\.jpg$/i.test(parsed.pathname)) {
+      const fullResUrl = imageUrl.replace(/\.(256|512)\.jpg$/i, '');
+      response = await fetch(fullResUrl, { headers: proxyHeaders });
+    }
 
     if (!response.ok) {
+      res.setHeader('Cache-Control', 'no-store');
       return res.status(response.status).send(`Failed to fetch image: ${response.statusText}`);
     }
 

@@ -65,7 +65,9 @@ async function searchMangaPill(query, page = 1) {
     // Cover Image
     const imgMatch = block.match(/data-src="([^"]+)"|src="([^"]+)"/i);
     const rawCover = imgMatch ? (imgMatch[1] || imgMatch[2]) : null;
-    const coverUrl = rawCover ? `/api/proxy/image?url=${encodeURIComponent(rawCover)}` : '/placeholder.jpg';
+    const coverUrl = rawCover
+      ? `/api/proxy/image?url=${encodeURIComponent(rawCover)}`
+      : `https://placehold.co/400x600/181a20/818cf8?text=${encodeURIComponent(title.slice(0, 20))}`;
 
     // Type & Status badges
     const typeMatch = block.match(/<div[^>]*class="[^"]*text-xs[^"]*"[^>]*>([^<]+)<\/div>/i);
@@ -78,6 +80,7 @@ async function searchMangaPill(query, page = 1) {
       title,
       coverUrl,
       coverUrlSmall: coverUrl,
+      rawCover: rawCover || coverUrl,
       type,
       status: 'Publishing',
       source: 'mangapill',
@@ -208,6 +211,7 @@ async function getMangaPillDetail(id, slug = '') {
       year: meta.year || null,
       coverUrl,
       coverUrlSmall: coverUrl,
+      rawCover,
       tags: genres.length > 0 ? genres : ['Manga', 'Action'],
       source: 'mangapill',
       isCompleteSource: true,

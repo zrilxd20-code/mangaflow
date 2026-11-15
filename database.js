@@ -14,6 +14,8 @@ const scryptAsync = util.promisify(crypto.scrypt);
 const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const DATA_DIR = isServerless ? path.join(os.tmpdir(), 'mangaflow_data') : path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+const SEED_DB_FILE = path.join(__dirname, 'data', 'db.json');
+const TOKEN_SECRET = process.env.MANGAFLOW_SECRET || 'mangaflow-serverless-hmac-secret-v1';
 
 // Optional Cloud KV / REST Configuration (Vercel KV / Upstash Redis / Custom REST)
 const CLOUD_KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.MANGAFLOW_CLOUD_DB_URL || '';
@@ -34,15 +36,54 @@ class Database {
     };
     this.cloudReady = false;
     this.cloudSyncPromise = null;
+    this.revokedTokens = new Set();
     this.init();
   }
 
+  _normalizeCoverUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    const trimmed = url.trim();
+    if (trimmed.startsWith('/api/proxy/image?url=%2Fapi%2Fproxy%2Fimage')) {
+      try {
+        const inner = new URL(trimmed, 'http://localhost').searchParams.get('url');
+        if (inner && inner.startsWith('/api/proxy/image')) {
+          return inner;
+        }
+      } catch (_) {}
+    }
+    if (
+      trimmed.startsWith('https://uploads.mangadex.org/') ||
+      trimmed.startsWith('http://uploads.mangadex.org/') ||
+      trimmed.startsWith('https://cdn.readdetectiveconan.com/') ||
+      trimmed.startsWith('http://cdn.readdetectiveconan.com/')
+    ) {
+      return `/api/proxy/image?url=${encodeURIComponent(trimmed)}`;
+    }
+    return trimmed;
+  }
+
   _normalizeState(parsed = {}) {
+    const rawBookmarks = parsed.bookmarks && typeof parsed.bookmarks === 'object' ? parsed.bookmarks : {};
+    const bookmarks = {};
+    for (const [uid, list] of Object.entries(rawBookmarks)) {
+      bookmarks[uid] = Array.isArray(list)
+        ? list.map((b) => (b && b.coverUrl ? { ...b, coverUrl: this._normalizeCoverUrl(b.coverUrl) } : b))
+        : [];
+    }
+
+    const rawHistory = parsed.history && typeof parsed.history === 'object' ? parsed.history : {};
+    const history = {};
+    for (const [uid, list] of Object.entries(rawHistory)) {
+      history[uid] = Array.isArray(list)
+        ? list.map((h) => (h && h.coverUrl ? { ...h, coverUrl: this._normalizeCoverUrl(h.coverUrl) } : h))
+        : [];
+    }
+
     return {
       users: Array.isArray(parsed.users) ? parsed.users : [],
       sessions: parsed.sessions && typeof parsed.sessions === 'object' ? parsed.sessions : {},
-      bookmarks: parsed.bookmarks && typeof parsed.bookmarks === 'object' ? parsed.bookmarks : {},
-      history: parsed.history && typeof parsed.history === 'object' ? parsed.history : {},
+      bookmarks,
+      history,
       settings: parsed.settings && typeof parsed.settings === 'object' ? parsed.settings : {},
       likes: parsed.likes && typeof parsed.likes === 'object' ? parsed.likes : {},
       ratings: parsed.ratings && typeof parsed.ratings === 'object' ? parsed.ratings : {},
@@ -60,8 +101,13 @@ class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf8');
         const parsed = JSON.parse(raw);
         this.data = this._normalizeState(parsed);
+      } else if (isServerless && fs.existsSync(SEED_DB_FILE)) {
+        const raw = fs.readFileSync(SEED_DB_FILE, 'utf8');
+        const parsed = JSON.parse(raw);
+        this.data = this._normalizeState(parsed);
+        this.persistLocalOnly();
       } else {
-        this.persist();
+        this.persistLocalOnly();
       }
     } catch (err) {
       console.warn('[Database Init] Using fallback memory state:', err.message);
@@ -69,8 +115,9 @@ class Database {
 
     // Trigger initial Cloud KV pull if configured
     if (this.hasCloudConfig()) {
-      this.pullFromCloud().catch((err) => {
+      this.cloudSyncPromise = this.pullFromCloud().catch((err) => {
         console.warn('[Cloud DB Init] Fallback to local storage:', err.message);
+        return false;
       });
     }
   }
@@ -264,9 +311,20 @@ class Database {
     const user = this.data.users.find((u) => u.id === userId);
     if (!user) throw new Error('User not found');
 
-    const token = crypto.randomBytes(32).toString('hex');
     // Session valid for 30 days
     const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const payload = Buffer.from(
+      JSON.stringify({
+        uid: user.id,
+        u: user.username,
+        e: user.email,
+        c: user.createdAt,
+        exp: expiresAt
+      })
+    ).toString('base64url');
+    const sig = crypto.createHmac('sha256', TOKEN_SECRET).update(`${nonce}.${payload}`).digest('base64url');
+    const token = `${nonce}.${payload}.${sig}`;
 
     this.data.sessions[token] = { userId, expiresAt };
     this.persist();
@@ -284,32 +342,90 @@ class Database {
   }
 
   getUserByToken(token) {
-    if (!token) return null;
-    const session = this.data.sessions[token];
-    if (!session) return null;
+    if (!token || typeof token !== 'string') return null;
+    if (this.revokedTokens.has(token)) return null;
 
-    if (Date.now() > session.expiresAt) {
-      delete this.data.sessions[token];
-      this.persist();
-      return null;
+    const session = this.data.sessions[token];
+    if (session) {
+      if (Date.now() > session.expiresAt) {
+        delete this.data.sessions[token];
+        this.persist();
+        return null;
+      }
+
+      const user = this.data.users.find((u) => u.id === session.userId);
+      if (!user) return null;
+
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      };
     }
 
-    const user = this.data.users.find((u) => u.id === session.userId);
-    if (!user) return null;
+    // Stateless HMAC token verification fallback across serverless cold starts/instances
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
 
-    return {
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      avatar: user.avatar,
-      createdAt: user.createdAt
-    };
+    const [nonce, payloadB64, sigB64] = parts;
+    if (!nonce || !payloadB64 || !sigB64) return null;
+
+    try {
+      const expectedSig = crypto.createHmac('sha256', TOKEN_SECRET).update(`${nonce}.${payloadB64}`).digest('base64url');
+      const sigBuf = Buffer.from(sigB64);
+      const expectedBuf = Buffer.from(expectedSig);
+      if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+        return null;
+      }
+
+      const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+      if (!payload || !payload.uid || !payload.exp || Date.now() > Number(payload.exp)) {
+        return null;
+      }
+
+      let user = this.data.users.find((u) => u.id === payload.uid);
+      if (!user) {
+        const username = String(payload.u || 'Reader');
+        const initial = username.charAt(0).toUpperCase().replace(/[<>"'&]/g, 'U');
+        const avatar = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="%236366f1"/><text x="50%" y="54%" font-family="sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">${initial}</text></svg>`;
+        user = {
+          id: payload.uid,
+          username,
+          email: payload.e || '',
+          passwordHash: '',
+          salt: '',
+          avatar,
+          createdAt: payload.c || new Date().toISOString()
+        };
+        this.data.users.push(user);
+        if (!this.data.bookmarks[user.id]) this.data.bookmarks[user.id] = [];
+        if (!this.data.history[user.id]) this.data.history[user.id] = [];
+        if (!this.data.settings[user.id]) this.data.settings[user.id] = {};
+      }
+
+      this.data.sessions[token] = { userId: user.id, expiresAt: Number(payload.exp) };
+
+      return {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+        createdAt: user.createdAt
+      };
+    } catch (_) {
+      return null;
+    }
   }
 
   destroySession(token) {
-    if (token && this.data.sessions[token]) {
-      delete this.data.sessions[token];
-      this.persist();
+    if (token) {
+      this.revokedTokens.add(token);
+      if (this.data.sessions[token]) {
+        delete this.data.sessions[token];
+        this.persist();
+      }
     }
   }
 
@@ -318,6 +434,13 @@ class Database {
     if (!this.data.bookmarks[userId]) this.data.bookmarks[userId] = [];
     if (!this.data.history[userId]) this.data.history[userId] = [];
     if (!this.data.settings[userId]) this.data.settings[userId] = {};
+
+    const normalizedBookmarks = Array.isArray(clientBookmarks)
+      ? clientBookmarks.map((b) => (b && b.coverUrl ? { ...b, coverUrl: this._normalizeCoverUrl(b.coverUrl) } : b))
+      : [];
+    const normalizedHistory = Array.isArray(clientHistory)
+      ? clientHistory.map((h) => (h && h.coverUrl ? { ...h, coverUrl: this._normalizeCoverUrl(h.coverUrl) } : h))
+      : [];
 
     const {
       replaceBookmarks = false,
@@ -329,7 +452,7 @@ class Database {
 
     // 1. Sync Bookmarks (supports accurate deletion & full replacement)
     if (replaceBookmarks) {
-      this.data.bookmarks[userId] = Array.isArray(clientBookmarks) ? clientBookmarks.slice(0, 500) : [];
+      this.data.bookmarks[userId] = normalizedBookmarks.slice(0, 500);
     } else {
       const serverBookmarks = this.data.bookmarks[userId];
       const bookmarkMap = new Map();
@@ -338,14 +461,12 @@ class Database {
         if (b && b.id) bookmarkMap.set(b.id, b);
       });
 
-      if (Array.isArray(clientBookmarks)) {
-        clientBookmarks.forEach((b) => {
-          if (!b || !b.id) return;
-          if (!bookmarkMap.has(b.id) || (b.addedAt && b.addedAt > (bookmarkMap.get(b.id).addedAt || 0))) {
-            bookmarkMap.set(b.id, b);
-          }
-        });
-      }
+      normalizedBookmarks.forEach((b) => {
+        if (!b || !b.id) return;
+        if (!bookmarkMap.has(b.id) || (b.addedAt && b.addedAt > (bookmarkMap.get(b.id).addedAt || 0))) {
+          bookmarkMap.set(b.id, b);
+        }
+      });
 
       if (Array.isArray(removedBookmarkIds)) {
         removedBookmarkIds.forEach((id) => bookmarkMap.delete(id));
@@ -356,9 +477,9 @@ class Database {
 
     // 2. Sync History (supports accurate deletion, clear all, & full replacement)
     if (replaceHistory) {
-      this.data.history[userId] = Array.isArray(clientHistory)
-        ? clientHistory.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 50)
-        : [];
+      this.data.history[userId] = normalizedHistory
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+        .slice(0, 50);
     } else {
       const serverHistory = this.data.history[userId];
       const historyMap = new Map();
@@ -367,14 +488,12 @@ class Database {
         if (h && h.mangaId) historyMap.set(h.mangaId, h);
       });
 
-      if (Array.isArray(clientHistory)) {
-        clientHistory.forEach((h) => {
-          if (!h || !h.mangaId) return;
-          if (!historyMap.has(h.mangaId) || (h.updatedAt && h.updatedAt > (historyMap.get(h.mangaId).updatedAt || 0))) {
-            historyMap.set(h.mangaId, h);
-          }
-        });
-      }
+      normalizedHistory.forEach((h) => {
+        if (!h || !h.mangaId) return;
+        if (!historyMap.has(h.mangaId) || (h.updatedAt && h.updatedAt > (historyMap.get(h.mangaId).updatedAt || 0))) {
+          historyMap.set(h.mangaId, h);
+        }
+      });
 
       if (Array.isArray(removedHistoryIds)) {
         removedHistoryIds.forEach((id) => historyMap.delete(id));
@@ -553,6 +672,7 @@ class Database {
     this.data.users = this.data.users.filter((u) => u.id !== userId);
     for (const [token, sess] of Object.entries(this.data.sessions)) {
       if (sess.userId === userId) {
+        this.revokedTokens.add(token);
         delete this.data.sessions[token];
       }
     }

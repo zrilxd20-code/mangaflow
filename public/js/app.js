@@ -292,11 +292,14 @@ const app = {
         .map((t) => `<span class="hero-tag">${t}</span>`)
         .join('');
 
+      const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
+      const smallCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
+
       slide.innerHTML = `
-        <img class="hero-backdrop-img" src="${item.coverUrl}" alt="${item.title}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${item.coverUrl}');}" />
+        <img class="hero-backdrop-img" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="hero-gradient-overlay"></div>
         <div class="hero-content">
-          <img class="hero-poster" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${item.coverUrlSmall || item.coverUrl}');}" />
+          <img class="hero-poster" src="${this.escapeHtml(smallCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
           <div class="hero-details">
             <div class="hero-tag-list">${tagsHtml}</div>
             <h1 class="hero-title">${item.title}</h1>
@@ -430,10 +433,12 @@ const app = {
     const statusClass = item.status === 'completed' ? 'completed' : 'ongoing';
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
     const isPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+    const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
+    const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
 
     card.innerHTML = `
       <div class="card-cover-wrap">
-        <img class="card-cover" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" loading="lazy" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${item.coverUrlSmall || item.coverUrl}');}else{this.onerror=null;this.src='https://placehold.co/400x600/181a20/818cf8?text=No+Cover';}" />
+        <img class="card-cover" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" loading="lazy" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="card-badges">
           ${isPill ? `
             <span class="card-badge" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; font-weight: 700;">
@@ -478,8 +483,10 @@ const app = {
       card.className = 'continue-card';
       card.onclick = () => this.navigate('manga', { id: item.mangaId });
 
+      const thumbCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.mangaTitle);
+
       card.innerHTML = `
-        <img class="continue-thumb" src="${item.coverUrl}" alt="${item.mangaTitle}" />
+        <img class="continue-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(thumbCover)}" alt="${this.escapeHtml(item.mangaTitle)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="continue-info">
           <div class="continue-title">${item.mangaTitle}</div>
           <div class="continue-sub">Chapter ${item.chapterNum} (Hal. ${item.page}/${item.totalPages})</div>
@@ -551,14 +558,16 @@ const app = {
         )
         .join('');
 
+      const fullCover = this.resolveCoverUrl(manga.coverUrl) || this.getFallbackCoverDataUri(manga.title);
+
       view.innerHTML = `
         <div class="detail-container">
           <!-- Backdrop Header -->
           <div class="detail-header">
-            <img class="detail-backdrop" src="${manga.coverUrl}" alt="${this.escapeHtml(manga.title)}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
+            <img class="detail-backdrop" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(manga.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
             <div class="detail-header-inner">
               <div class="detail-cover-box">
-                <img class="detail-cover-img" src="${manga.coverUrl}" alt="${this.escapeHtml(manga.title)}" onerror="if(!this.dataset.triedProxy){this.dataset.triedProxy='1';this.src='/api/proxy/image?url='+encodeURIComponent('${manga.coverUrl}');}" />
+                <img class="detail-cover-img" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(manga.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
               </div>
               <div class="detail-main-info">
                 <h1 class="detail-title">${this.escapeHtml(manga.title)}</h1>
@@ -961,8 +970,10 @@ const app = {
         card.style.position = 'relative';
         card.onclick = () => this.navigate('manga', { id: item.mangaId });
 
+        const thumbCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.mangaTitle);
+
         card.innerHTML = `
-          <img class="continue-thumb" src="${item.coverUrl}" alt="${this.escapeHtml(item.mangaTitle)}" />
+          <img class="continue-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(thumbCover)}" alt="${this.escapeHtml(item.mangaTitle)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
           <div class="continue-info">
             <div class="continue-title" style="padding-right: 24px;">${this.escapeHtml(item.mangaTitle)}</div>
             <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${item.page}/${item.totalPages})</div>
@@ -1187,9 +1198,11 @@ const app = {
       };
 
       const isItemPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+      const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
+      const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
 
       el.innerHTML = `
-        <img class="search-item-thumb" src="${item.coverUrlSmall || item.coverUrl}" alt="${item.title}" onerror="this.onerror=null;this.src='https://placehold.co/400x600/181a20/818cf8?text=No+Cover';" />
+        <img class="search-item-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="search-item-info">
           <div class="search-item-title">${item.title}</div>
           <div class="search-item-meta">
@@ -1923,6 +1936,74 @@ const app = {
   },
 
   // ---------------- Utility Helpers ----------------
+  resolveCoverUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('/api/proxy/image?url=%2Fapi%2Fproxy%2Fimage')) {
+      try {
+        const inner = new URL(trimmed, window.location.origin).searchParams.get('url');
+        if (inner && inner.startsWith('/api/proxy/image')) {
+          return inner;
+        }
+      } catch (_) {}
+    }
+    if (
+      trimmed.startsWith('https://uploads.mangadex.org/') ||
+      trimmed.startsWith('http://uploads.mangadex.org/') ||
+      trimmed.startsWith('https://cdn.readdetectiveconan.com/') ||
+      trimmed.startsWith('http://cdn.readdetectiveconan.com/')
+    ) {
+      return `/api/proxy/image?url=${encodeURIComponent(trimmed)}`;
+    }
+    return trimmed;
+  },
+
+  getFallbackCoverDataUri(title = 'MangaFlow') {
+    const cleanTitle = String(title || 'MangaFlow').replace(/[<>&"']/g, '').trim().slice(0, 22) || 'No Cover';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#141720"/><stop offset="100%" stop-color="#1e2230"/></linearGradient></defs><rect width="400" height="600" fill="url(#g)"/><rect x="16" y="16" width="368" height="568" rx="16" fill="none" stroke="#6366f1" stroke-opacity="0.28" stroke-width="2"/><text x="200" y="285" font-family="sans-serif" font-size="22" font-weight="700" fill="#818cf8" text-anchor="middle">${cleanTitle}</text><text x="200" y="320" font-family="sans-serif" font-size="14" fill="#64748b" text-anchor="middle">Cover Tidak Tersedia</text></svg>`;
+    return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+  },
+
+  handleCoverError(img, fallbackCoverUrl = '', title = 'MangaFlow') {
+    if (!img) return;
+    const currentSrc = img.getAttribute('src') || img.src || '';
+    const resolvedFallback = this.resolveCoverUrl(fallbackCoverUrl);
+
+    if (!img.dataset.triedAlt) {
+      const hasThumbSuffix = /\.(256|512)\.jpg/i.test(currentSrc) || /%2E(256|512)%2Ejpg/i.test(currentSrc);
+      let altSrc = '';
+      if (resolvedFallback && resolvedFallback !== currentSrc && !resolvedFallback.includes('.256.jpg')) {
+        altSrc = resolvedFallback;
+      } else if (hasThumbSuffix) {
+        altSrc = currentSrc
+          .replace(/\.(256|512)\.jpg/gi, '')
+          .replace(/%2E(256|512)%2Ejpg/gi, '');
+      }
+      if (altSrc && altSrc !== currentSrc) {
+        img.dataset.triedAlt = '1';
+        img.src = altSrc;
+        return;
+      }
+    }
+
+    if (!img.dataset.triedDirect && currentSrc.includes('/api/proxy/image?url=')) {
+      try {
+        const parsed = new URL(currentSrc, window.location.origin);
+        const rawUrl = parsed.searchParams.get('url');
+        if (rawUrl && /^https?:\/\//i.test(rawUrl)) {
+          img.dataset.triedDirect = '1';
+          img.referrerPolicy = 'no-referrer';
+          img.src = rawUrl;
+          return;
+        }
+      } catch (_) {}
+    }
+
+    img.onerror = null;
+    img.src = this.getFallbackCoverDataUri(title || img.alt || 'MangaFlow');
+  },
+
   escapeHtml(str) {
     return String(str ?? '')
       .replace(/&/g, '&amp;')

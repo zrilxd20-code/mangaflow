@@ -260,6 +260,15 @@ async function runComprehensiveQA() {
     const searchResult = await rSearch.json();
     assertTest('Endpoint /api/search Berfungsi Normal', rSearch.status === 200 && Array.isArray(searchResult.data));
 
+    // 4.5 MangaDex Cover Proxy Streaming (Anti-403 Regression Test)
+    const sampleCoverPath = trendingData.data?.[0]?.coverUrlSmall || trendingData.data?.[0]?.coverUrl;
+    const rDexCover = await fetch(`${baseUrl}${sampleCoverPath}`);
+    assertTest(
+      'Proxy Cover MangaDex Mengalirkan Gambar (HTTP 200)',
+      Boolean(sampleCoverPath) && rDexCover.status === 200 && (rDexCover.headers.get('content-type') || '').includes('image'),
+      `Status: ${rDexCover.status}, Type: ${rDexCover.headers.get('content-type')}`
+    );
+
     // ----------------------------------------------------
     // 5. MANGAPILL (SERVER 2) API QA (KOMPLIT & ANTI-404)
     // ----------------------------------------------------
