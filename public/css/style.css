@@ -1204,6 +1204,7 @@ h1, h2, h3, h4, .brand-title {
 .chapters-filters {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
 }
 
@@ -1216,6 +1217,16 @@ h1, h2, h3, h4, .brand-title {
   font-family: var(--font-body);
   font-size: 0.88rem;
   cursor: pointer;
+}
+
+.chapter-search-input {
+  cursor: text;
+  min-width: 175px;
+  outline: none;
+}
+
+.chapter-search-input:focus {
+  border-color: var(--accent-primary);
 }
 
 .chapters-grid {

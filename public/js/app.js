@@ -231,6 +231,7 @@ const app = {
       } else if (viewName === 'search') {
         const qParams = new URLSearchParams();
         if (params.q) qParams.set('q', params.q);
+        if (params.page && Number(params.page) > 1) qParams.set('page', params.page);
         targetHash = `#/search?${qParams.toString()}`;
       } else if (viewName === 'home') {
         targetHash = '#/';
@@ -671,6 +672,7 @@ const app = {
                 <h2>Daftar Chapter (${chapters.length})</h2>
               </div>
               <div class="chapters-filters">
+                <input type="text" class="filter-select chapter-search-input" id="chapter-search-input" placeholder="Cari chapter (misal: 100)..." oninput="app.filterChapters()" autocomplete="off" />
                 <select class="filter-select" id="chapter-type-filter" onchange="app.filterChapters()">
                   <option value="all">Semua Tipe</option>
                   <option value="readable" selected>Bisa Dibaca Langsung</option>
@@ -826,6 +828,7 @@ const app = {
     if (!this.currentChaptersList) return;
     const langSelect = document.getElementById('chapter-lang-filter');
     const typeSelect = document.getElementById('chapter-type-filter');
+    const chSearch = (document.getElementById('chapter-search-input')?.value || '').trim().toLowerCase();
     const lang = langSelect ? langSelect.value : 'all';
     const type = typeSelect ? typeSelect.value : 'all';
 
@@ -843,6 +846,15 @@ const app = {
       }
     } else if (type === 'external') {
       filtered = filtered.filter((c) => c.isExternal);
+    }
+
+    if (chSearch) {
+      this.chaptersDisplayLimit = 80;
+      filtered = filtered.filter(
+        (c) =>
+          String(c.chapter || '').toLowerCase().includes(chSearch) ||
+          String(c.title || '').toLowerCase().includes(chSearch)
+      );
     }
 
     this.renderChaptersList(filtered);
@@ -1049,6 +1061,7 @@ const app = {
     const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
     const safeQ = this.escapeHtml(currentQ);
+    const page = Math.max(1, parseInt(params.page || '1', 10) || 1);
 
     view.innerHTML = `
       <div class="section-container">
@@ -1074,7 +1087,7 @@ const app = {
         <div class="section-header">
           <div class="section-title-wrap">
             <i class="${isPill ? 'ri-archive-line' : 'ri-search-line'} title-icon"></i>
-            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}</h2>
+            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
           </div>
           ${!isPill ? `
           <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
@@ -1090,6 +1103,7 @@ const app = {
           <div class="manga-card skeleton-card"></div>
           <div class="manga-card skeleton-card"></div>
         </div>
+        <div style="display: flex; justify-content: center; align-items: center; gap: 14px; margin-top: 36px; flex-wrap: wrap;" id="search-pagination"></div>
       </div>
     `;
 
@@ -1107,18 +1121,20 @@ const app = {
       let res;
       if (this.activeSource === 'mangapill') {
         const queryText = params.q || 'one piece';
-        res = await Api.searchMangaPill(queryText);
+        res = await Api.searchMangaPill(queryText, page);
       } else {
         const queryParams = {
           q: params.q || '',
           sort: this.selectedSort,
           status: this.selectedStatus,
-          tags: Array.from(this.selectedFilterTags).join(',')
+          tags: Array.from(this.selectedFilterTags).join(','),
+          page
         };
         res = await Api.search(queryParams);
       }
 
       const grid = document.getElementById('search-results-grid');
+      const pagination = document.getElementById('search-pagination');
       grid.innerHTML = '';
 
       if (!res.data || !res.data.length) {
@@ -1129,13 +1145,42 @@ const app = {
             <p>Coba gunakan kata kunci yang lebih singkat atau periksa ejaan judul.</p>
           </div>
         `;
-        return;
+      } else {
+        res.data.forEach((item) => {
+          const card = this.createMangaCard(item);
+          grid.appendChild(card);
+        });
       }
 
-      res.data.forEach((item) => {
-        const card = this.createMangaCard(item);
-        grid.appendChild(card);
-      });
+      if (pagination && ((res.data && res.data.length > 0) || page > 1)) {
+        pagination.innerHTML = '';
+        const hasNext = isPill
+          ? (res.data && res.data.length >= 20)
+          : (page * 24 < (res.total || 0) || (res.data && res.data.length === 24));
+
+        if (page > 1) {
+          const prevBtn = document.createElement('button');
+          prevBtn.className = 'btn btn-secondary';
+          prevBtn.innerHTML = '<i class="ri-arrow-left-s-line"></i> Halaman Sebelumnya';
+          prevBtn.onclick = () => this.navigate('search', { q: currentQ, page: page - 1 });
+          pagination.appendChild(prevBtn);
+        }
+
+        if (page > 1 || hasNext) {
+          const pageBadge = document.createElement('span');
+          pageBadge.style.cssText = 'color: var(--text-muted); font-weight: 600; font-size: 0.9rem; padding: 0 6px;';
+          pageBadge.textContent = `Halaman ${page}`;
+          pagination.appendChild(pageBadge);
+        }
+
+        if (hasNext) {
+          const nextBtn = document.createElement('button');
+          nextBtn.className = 'btn btn-primary';
+          nextBtn.innerHTML = 'Halaman Selanjutnya <i class="ri-arrow-right-s-line"></i>';
+          nextBtn.onclick = () => this.navigate('search', { q: currentQ, page: page + 1 });
+          pagination.appendChild(nextBtn);
+        }
+      }
     } catch (err) {
       console.error(err);
     }

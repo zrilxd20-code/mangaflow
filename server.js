@@ -612,11 +612,18 @@ app.delete('/api/manga/:id/comments/:commentId', requireAuth, (req, res) => {
 // API ROUTES
 // ----------------------------------------------------
 
+function setEdgeCache(res, browserSec = 180, edgeSec = 600, swrSec = 1200) {
+  res.setHeader('Cache-Control', `public, max-age=${browserSec}, s-maxage=${edgeSec}, stale-while-revalidate=${swrSec}`);
+}
+
 // 1. Trending / Popular Manga
 app.get('/api/trending', async (req, res) => {
   const cacheKey = 'trending_manga';
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 300, 900, 1800);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
 
   try {
     const url = `${MANGADEX_API}/manga?limit=14&offset=0&includes[]=cover_art&includes[]=author&includes[]=artist&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true`;
@@ -624,6 +631,7 @@ app.get('/api/trending', async (req, res) => {
     const mangaList = (data.data || []).map(formatManga);
 
     cache.set(cacheKey, mangaList, 900); // 15 min
+    setEdgeCache(res, 300, 900, 1800);
     res.json({ success: true, data: mangaList, source: 'api' });
   } catch (err) {
     console.error('Trending error:', err.message);
@@ -638,7 +646,10 @@ app.get('/api/latest', async (req, res) => {
   const offset = (page - 1) * limit;
   const cacheKey = `latest_manga_${page}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 180, 600, 1200);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
 
   try {
     const url = `${MANGADEX_API}/manga?limit=${limit}&offset=${offset}&includes[]=cover_art&order[latestUploadedChapter]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true`;
@@ -646,6 +657,7 @@ app.get('/api/latest', async (req, res) => {
     const mangaList = (data.data || []).map(formatManga);
 
     cache.set(cacheKey, mangaList, 600); // 10 min
+    setEdgeCache(res, 180, 600, 1200);
     res.json({ success: true, data: mangaList, total: data.total, source: 'api' });
   } catch (err) {
     console.error('Latest error:', err.message);
@@ -662,7 +674,10 @@ app.get('/api/search', async (req, res) => {
 
   const cacheKey = `search_${q}_${tags}_${status}_${sort}_${lang}_${pageNum}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached.data, total: cached.total, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 120, 300, 600);
+    return res.json({ success: true, data: cached.data, total: cached.total, source: 'cache' });
+  }
 
   try {
     const params = new URLSearchParams();
@@ -716,6 +731,7 @@ app.get('/api/search', async (req, res) => {
 
     const result = { data: mangaList, total: data.total || 0 };
     cache.set(cacheKey, result, 600);
+    setEdgeCache(res, 120, 300, 600);
     res.json({ success: true, data: result.data, total: result.total, source: 'api' });
   } catch (err) {
     console.error('Search error:', err.message);
@@ -727,7 +743,10 @@ app.get('/api/search', async (req, res) => {
 app.get('/api/tags', async (req, res) => {
   const cacheKey = 'all_tags';
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached });
+  if (cached) {
+    setEdgeCache(res, 3600, 86400, 86400);
+    return res.json({ success: true, data: cached });
+  }
 
   try {
     const data = await resilientFetch(`${MANGADEX_API}/manga/tag`);
@@ -738,6 +757,7 @@ app.get('/api/tags', async (req, res) => {
     })).sort((a, b) => a.name.localeCompare(b.name));
 
     cache.set(cacheKey, tags, 86400); // 24 hours
+    setEdgeCache(res, 3600, 86400, 86400);
     res.json({ success: true, data: tags });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -749,7 +769,10 @@ app.get('/api/manga/:id', async (req, res) => {
   const { id } = req.params;
   const cacheKey = `manga_detail_${id}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 300, 900, 1800);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
 
   try {
     const url = `${MANGADEX_API}/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`;
@@ -781,6 +804,7 @@ app.get('/api/manga/:id', async (req, res) => {
     } catch (_) {}
 
     cache.set(cacheKey, formatted, 1800); // 30 min
+    setEdgeCache(res, 300, 900, 1800);
     res.json({ success: true, data: formatted, source: 'api' });
   } catch (err) {
     console.error('Manga detail error:', err.message);
@@ -797,7 +821,10 @@ app.get('/api/manga/:id/chapters', async (req, res) => {
 
   const cacheKey = `chapters_${id}_${lang}_${order}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 180, 600, 1200);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
 
   try {
     // Fetch chapters up to 500
@@ -834,6 +861,7 @@ app.get('/api/manga/:id/chapters', async (req, res) => {
     });
 
     cache.set(cacheKey, chapters, 900); // 15 min
+    setEdgeCache(res, 180, 600, 1200);
     res.json({ success: true, data: chapters, total: chapters.length, source: 'api' });
   } catch (err) {
     console.error('Chapters feed error:', err.message);
@@ -922,15 +950,18 @@ app.get('/api/mangapill/search', async (req, res) => {
     return res.json({ success: true, data: [], total: 0, source: 'mangapill' });
   }
 
-  const cacheKey = `pill:search:${q.trim().toLowerCase()}`;
+  const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
+  const cacheKey = `pill:search:${q.trim().toLowerCase()}:${page}`;
   const cached = cache.get(cacheKey);
   if (cached) {
+    setEdgeCache(res, 180, 600, 1200);
     return res.json({ success: true, data: cached, source: 'cache' });
   }
 
   try {
-    const result = await mangapill.searchMangaPill(q);
+    const result = await mangapill.searchMangaPill(q, page);
     cache.set(cacheKey, result.data, 900); // 15 mins cache
+    setEdgeCache(res, 180, 600, 1200);
     res.json(result);
   } catch (err) {
     console.error('MangaPill search error:', err.message);
@@ -944,12 +975,14 @@ app.get(['/api/mangapill/manga/:id', '/api/mangapill/manga/:id/:slug'], async (r
   const cacheKey = `pill:manga:${cleanId}`;
   const cached = cache.get(cacheKey);
   if (cached) {
+    setEdgeCache(res, 180, 600, 1200);
     return res.json({ success: true, data: cached, source: 'cache' });
   }
 
   try {
     const result = await mangapill.getMangaPillDetail(cleanId, slug || '');
     cache.set(cacheKey, result.data, 900);
+    setEdgeCache(res, 180, 600, 1200);
     res.json(result);
   } catch (err) {
     console.error('MangaPill detail error:', err.message);

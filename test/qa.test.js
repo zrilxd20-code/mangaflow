@@ -244,6 +244,10 @@ async function runComprehensiveQA() {
     const rTrending = await fetch(`${baseUrl}/api/trending`);
     const trendingData = await rTrending.json();
     assertTest('Endpoint /api/trending Mengembalikan Manga Populer', rTrending.status === 200 && Array.isArray(trendingData.data) && trendingData.data.length > 0);
+    assertTest(
+      'Header Edge CDN Cache-Control (s-maxage) Aktif di /api/trending',
+      (rTrending.headers.get('cache-control') || '').includes('s-maxage=')
+    );
 
     // 4.2 Latest
     const rLatest = await fetch(`${baseUrl}/api/latest?page=1`);
@@ -504,6 +508,16 @@ async function runComprehensiveQA() {
       appJsContent.includes('mob-fav-count') &&
       appJsContent.includes('State.getBookmarks().length') &&
       appJsContent.includes("'inline-flex'")
+    );
+
+    // 9.7 Upgrade Features: Chapter Quick Search, Search Pagination & Reader Auto-Resume
+    const rReaderJs = await fetch(`${baseUrl}/js/reader.js`);
+    const readerJsContent = await rReaderJs.text();
+    assertTest(
+      'Fitur Peningkatan UX Aktif (chapter-search-input, search-pagination, Auto-Resume Reader)',
+      appJsContent.includes('chapter-search-input') &&
+      appJsContent.includes('search-pagination') &&
+      readerJsContent.includes('Melanjutkan dari Halaman')
     );
 
   } catch (err) {

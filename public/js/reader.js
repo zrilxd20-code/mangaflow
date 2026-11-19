@@ -767,12 +767,18 @@ const Reader = {
     }
   },
 
-  async open(manga, chapterId, allChapters = []) {
+  async open(manga, chapterId, allChapters = [], initialPage = null) {
     this.active = true;
     this.manga = manga;
     this.currentChapterId = chapterId;
     this.allChapters = allChapters;
     this.currentPage = 1;
+    const historyEntry = typeof State !== 'undefined' && State.getHistory
+      ? State.getHistory().find((h) => h.mangaId === manga?.id && h.chapterId === chapterId)
+      : null;
+    this.pendingInitialPage = initialPage && Number(initialPage) > 0
+      ? parseInt(initialPage, 10)
+      : (historyEntry?.page || null);
     this.preloadedSet.clear();
 
     if (manga && manga.id) {
@@ -830,7 +836,17 @@ const Reader = {
 
       this.chapterData = res.data;
       this.totalPages = res.data.totalPages || res.data.pages.length;
-      this.currentPage = 1;
+
+      let savedPage = this.pendingInitialPage;
+      this.pendingInitialPage = null;
+      if (!savedPage && typeof State !== 'undefined' && State.getHistory) {
+        const historyEntry = State.getHistory().find(
+          (h) => h.mangaId === this.manga?.id && h.chapterId === chapterId
+        );
+        savedPage = historyEntry?.page || 1;
+      }
+      const startPage = Math.max(1, Math.min(this.totalPages, parseInt(savedPage, 10) || 1));
+      this.currentPage = startPage;
 
       // Update Chapter Info Title
       this.elements.chapterTitle.textContent = `Chapter ${res.data.chapter || '0'}${res.data.title ? ': ' + res.data.title : ''}`;
@@ -847,7 +863,25 @@ const Reader = {
       this.renderPages();
 
       // Trigger Smart Preload for upcoming pages
-      this.preloadUpcomingPages(1, 4);
+      this.preloadUpcomingPages(startPage, 4);
+
+      if (startPage > 1) {
+        if (this.mode === 'webtoon') {
+          const scrollToSavedPage = () => {
+            const targetWrap = this.elements.strip.querySelector(`[data-page="${startPage}"]`);
+            if (targetWrap) {
+              targetWrap.scrollIntoView({ behavior: 'auto', block: 'start' });
+            }
+          };
+          requestAnimationFrame(() => {
+            scrollToSavedPage();
+            setTimeout(scrollToSavedPage, 250);
+          });
+        }
+        if (typeof app !== 'undefined' && app.showToast) {
+          app.showToast(`Melanjutkan dari Halaman ${startPage}/${this.totalPages}`);
+        }
+      }
     } catch (err) {
       console.error('Failed to load chapter pages:', err);
       this.elements.loader.style.display = 'none';
@@ -901,7 +935,9 @@ const Reader = {
       strip.appendChild(wrap);
     });
 
-    this.elements.workspace.scrollTop = 0;
+    if (this.currentPage <= 1) {
+      this.elements.workspace.scrollTop = 0;
+    }
   },
 
   detectActiveWebtoonPage() {

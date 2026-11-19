@@ -168,8 +168,9 @@ const Api = {
   },
 
   // ---------------- MangaPill (Complete Chapters Provider) ----------------
-  async searchMangaPill(q) {
-    return this.request(`/mangapill/search?q=${encodeURIComponent(q)}`);
+  async searchMangaPill(q, page = 1) {
+    const pageParam = page > 1 ? `&page=${page}` : '';
+    return this.request(`/mangapill/search?q=${encodeURIComponent(q)}${pageParam}`);
   },
 
   async getMangaPillDetail(id, slug = '') {

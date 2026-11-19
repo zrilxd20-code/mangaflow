@@ -2,7 +2,7 @@
 // MangaFlow Service Worker (PWA & Offline Resilience)
 // ===================================================
 
-const CACHE_NAME = 'mangaflow-v1.0.3';
+const CACHE_NAME = 'mangaflow-v1.0.4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
