@@ -269,6 +269,14 @@ async function runComprehensiveQA() {
       `Status: ${rDexCover.status}, Type: ${rDexCover.headers.get('content-type')}`
     );
 
+    // 4.6 Safe Non-Numeric Pagination Guard (/api/latest & /api/search)
+    const rBadPageLatest = await fetch(`${baseUrl}/api/latest?page=abc`);
+    const rBadPageSearch = await fetch(`${baseUrl}/api/search?q=naruto&page=abc`);
+    assertTest(
+      'Guard Pagination Non-Angka (?page=abc) Tetap Aman (HTTP 200)',
+      rBadPageLatest.status === 200 && rBadPageSearch.status === 200
+    );
+
     // ----------------------------------------------------
     // 5. MANGAPILL (SERVER 2) API QA (KOMPLIT & ANTI-404)
     // ----------------------------------------------------

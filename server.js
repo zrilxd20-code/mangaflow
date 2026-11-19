@@ -633,7 +633,7 @@ app.get('/api/trending', async (req, res) => {
 
 // 2. Latest Updates
 app.get('/api/latest', async (req, res) => {
-  const page = parseInt(req.query.page || '1', 10);
+  const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
   const limit = 20;
   const offset = (page - 1) * limit;
   const cacheKey = `latest_manga_${page}`;
@@ -657,7 +657,7 @@ app.get('/api/latest', async (req, res) => {
 app.get('/api/search', async (req, res) => {
   const { q = '', tags = '', status = '', sort = 'relevance', lang = '', page = '1' } = req.query;
   const limit = 24;
-  const pageNum = Math.max(1, parseInt(page, 10));
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const offset = (pageNum - 1) * limit;
 
   const cacheKey = `search_${q}_${tags}_${status}_${sort}_${lang}_${pageNum}`;

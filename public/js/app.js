@@ -124,6 +124,23 @@ const app = {
         if (um) um.classList.remove('open');
       }
     });
+
+    // Bind Filter Modal Sort & Status Option Chips
+    document.querySelectorAll('#filter-sort-options .filter-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#filter-sort-options .filter-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        this.selectedSort = chip.dataset.sort || 'relevance';
+      });
+    });
+
+    document.querySelectorAll('#filter-status-options .filter-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#filter-status-options .filter-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        this.selectedStatus = chip.dataset.status || '';
+      });
+    });
   },
 
   initRouter() {
@@ -1009,19 +1026,6 @@ const app = {
   },
 
   // ---------------- Search & Filter View ----------------
-  openMobileSearch() {
-    this.navigate('search');
-    setTimeout(() => {
-      const pageInput = document.getElementById('search-page-input');
-      if (pageInput) {
-        pageInput.focus();
-      } else {
-        const navInput = document.getElementById('global-search-input');
-        if (navInput) navInput.focus();
-      }
-    }, 150);
-  },
-
   switchSource(src) {
     this.activeSource = src;
     const pageInput = document.getElementById('search-page-input');
@@ -1044,6 +1048,7 @@ const app = {
 
     const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
+    const safeQ = this.escapeHtml(currentQ);
 
     view.innerHTML = `
       <div class="section-container">
@@ -1051,7 +1056,7 @@ const app = {
         <div class="search-page-bar" style="margin-bottom: 16px;">
           <div class="search-input-wrapper" style="max-width: 600px; margin: 0 auto;">
             <i class="ri-search-line search-icon"></i>
-            <input type="text" id="search-page-input" value="${currentQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author...'}" />
+            <input type="text" id="search-page-input" value="${safeQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author...'}" />
             ${currentQ ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
           </div>
         </div>
@@ -1069,7 +1074,7 @@ const app = {
         <div class="section-header">
           <div class="section-title-wrap">
             <i class="${isPill ? 'ri-archive-line' : 'ri-search-line'} title-icon"></i>
-            <h2>${currentQ ? `Hasil: "${currentQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}</h2>
+            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}</h2>
           </div>
           ${!isPill ? `
           <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
@@ -1219,11 +1224,16 @@ const app = {
     if (currentQ) {
       const footerEl = document.createElement('div');
       footerEl.style.cssText = 'padding: 8px 10px 4px 10px; border-top: 1px solid var(--border-subtle); margin-top: 6px; text-align: center;';
-      footerEl.innerHTML = `
-        <button style="background: none; border: none; color: var(--accent-primary); cursor: pointer; font-weight: 600; font-size: 0.82rem; width: 100%; padding: 4px;" onclick="document.getElementById('${targetId}').classList.remove('open'); app.performSearch('${encodeURIComponent(currentQ)}')">
-          Lihat Semua Hasil Pencarian <i class="ri-arrow-right-line"></i>
-        </button>
-      `;
+      const seeAllBtn = document.createElement('button');
+      seeAllBtn.type = 'button';
+      seeAllBtn.style.cssText = 'background: none; border: none; color: var(--accent-primary); cursor: pointer; font-weight: 600; font-size: 0.82rem; width: 100%; padding: 4px;';
+      seeAllBtn.innerHTML = 'Lihat Semua Hasil Pencarian <i class="ri-arrow-right-line"></i>';
+      seeAllBtn.onclick = () => {
+        dropdown.classList.remove('open');
+        this.toggleMobileSearch(false);
+        this.performSearch(currentQ);
+      };
+      footerEl.appendChild(seeAllBtn);
       dropdown.appendChild(footerEl);
     }
 
@@ -1402,8 +1412,15 @@ const app = {
 
   applyFilters() {
     this.toggleFilterModal();
-    const q = document.getElementById('global-search-input').value.trim();
-    this.navigate('search', { q });
+    const pageInput = document.getElementById('search-page-input');
+    const mobInput = document.getElementById('mobile-search-input');
+    const globalInput = document.getElementById('global-search-input');
+    const q = (pageInput?.value || mobInput?.value || globalInput?.value || '').trim();
+    if (this.currentView === 'search') {
+      this.renderSearchView({ q });
+    } else {
+      this.navigate('search', { q });
+    }
   },
 
   // ---------------- Bookmarking Actions ----------------
