@@ -100,12 +100,100 @@
   </script>
 </head>
 <body class="theme-dark">
+  <!-- Comfortable Ambient Splash Loading Screen -->
+  <div id="app-splash-screen" class="app-splash-screen" role="status" aria-live="polite">
+    <div class="splash-ambient-orb orb-1" aria-hidden="true"></div>
+    <div class="splash-ambient-orb orb-2" aria-hidden="true"></div>
+    <div class="splash-content">
+      <div class="splash-logo-wrap">
+        <div class="splash-logo-ring" aria-hidden="true"></div>
+        <svg class="splash-logo-svg" viewBox="0 0 64 64" width="76" height="76" aria-hidden="true">
+          <defs>
+            <linearGradient id="mfSplashBg" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#171b2d" />
+              <stop offset="55%" stop-color="#0d101c" />
+              <stop offset="100%" stop-color="#07080f" />
+            </linearGradient>
+            <linearGradient id="mfSplashRim" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8" />
+              <stop offset="50%" stop-color="#818cf8" stop-opacity="0.9" />
+              <stop offset="100%" stop-color="#c084fc" stop-opacity="0.8" />
+            </linearGradient>
+            <linearGradient id="mfSplashLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#38bdf8" />
+              <stop offset="55%" stop-color="#6366f1" />
+              <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+            <linearGradient id="mfSplashRight" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#818cf8" />
+              <stop offset="55%" stop-color="#a855f7" />
+              <stop offset="100%" stop-color="#ec4899" />
+            </linearGradient>
+            <linearGradient id="mfSplashRibbon" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#38bdf8" />
+              <stop offset="50%" stop-color="#c4b5fd" />
+              <stop offset="100%" stop-color="#f472b6" />
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#mfSplashBg)" stroke="url(#mfSplashRim)" stroke-width="1.6" />
+          <circle cx="32" cy="30" r="20" fill="#6366f1" opacity="0.16" />
+          <path d="M12 20.5 C12 18.2 13.8 16.7 16 17.2 C22.5 18.6 27.8 21.8 31.2 26.2 L31.2 47.4 C27.2 43.4 21.6 41.2 14.8 41.4 C13.2 41.4 12 40.2 12 38.6 Z" fill="url(#mfSplashLeft)" />
+          <path d="M52 20.5 C52 18.2 50.2 16.7 48 17.2 C41.5 18.6 36.2 21.8 32.8 26.2 L32.8 47.4 C36.8 43.4 42.4 41.2 49.2 41.4 C50.8 41.4 52 40.2 52 38.6 Z" fill="url(#mfSplashRight)" />
+          <path d="M32 24.5 L33.4 26.6 L33.4 48.2 L32 49.4 L30.6 48.2 L30.6 26.6 Z" fill="#f8fafc" opacity="0.92" />
+          <path d="M16 33.5 C21.5 29 26.5 30.5 32 35.2 C37.5 30.5 42.5 29 48 25.5" fill="none" stroke="url(#mfSplashRibbon)" stroke-width="2.4" stroke-linecap="round" />
+          <path d="M48.5 9.5 L49.8 12.7 L53 14 L49.8 15.3 L48.5 18.5 L47.2 15.3 L44 14 L47.2 12.7 Z" fill="#e0f2fe" />
+        </svg>
+      </div>
+      <div class="splash-brand-name">Manga<span class="gradient-text">Flow</span></div>
+      <p class="splash-tagline">Menyiapkan koleksi manga terbaik untukmu...</p>
+      <div class="splash-loader-row">
+        <progress aria-label="Memuat MangaFlow" class="loading-spinner"></progress>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Route Progress Bar -->
+  <div id="top-loading-bar" class="top-loading-bar" aria-hidden="true"></div>
+
   <!-- Top Glass Navigation -->
   <header class="navbar" id="main-nav">
     <div class="nav-container">
       <div class="nav-brand" id="brand-logo" onclick="app.navigate('home')">
         <div class="brand-badge">
-          <i class="ri-book-open-fill"></i>
+          <svg class="brand-logo-svg" viewBox="0 0 64 64" width="38" height="38" aria-hidden="true">
+            <defs>
+              <linearGradient id="mfNavBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1a1f36" />
+                <stop offset="100%" stop-color="#0b0d17" />
+              </linearGradient>
+              <linearGradient id="mfNavRim" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.75" />
+                <stop offset="50%" stop-color="#818cf8" stop-opacity="0.9" />
+                <stop offset="100%" stop-color="#c084fc" stop-opacity="0.75" />
+              </linearGradient>
+              <linearGradient id="mfNavLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="55%" stop-color="#6366f1" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+              </linearGradient>
+              <linearGradient id="mfNavRight" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#818cf8" />
+                <stop offset="55%" stop-color="#a855f7" />
+                <stop offset="100%" stop-color="#ec4899" />
+              </linearGradient>
+              <linearGradient id="mfNavRibbon" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="50%" stop-color="#c4b5fd" />
+                <stop offset="100%" stop-color="#f472b6" />
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#mfNavBg)" stroke="url(#mfNavRim)" stroke-width="1.8" />
+            <path d="M12 20.5 C12 18.2 13.8 16.7 16 17.2 C22.5 18.6 27.8 21.8 31.2 26.2 L31.2 47.4 C27.2 43.4 21.6 41.2 14.8 41.4 C13.2 41.4 12 40.2 12 38.6 Z" fill="url(#mfNavLeft)" />
+            <path d="M52 20.5 C52 18.2 50.2 16.7 48 17.2 C41.5 18.6 36.2 21.8 32.8 26.2 L32.8 47.4 C36.8 43.4 42.4 41.2 49.2 41.4 C50.8 41.4 52 40.2 52 38.6 Z" fill="url(#mfNavRight)" />
+            <path d="M32 24.5 L33.4 26.6 L33.4 48.2 L32 49.4 L30.6 48.2 L30.6 26.6 Z" fill="#f8fafc" opacity="0.92" />
+            <path d="M16 33.5 C21.5 29 26.5 30.5 32 35.2 C37.5 30.5 42.5 29 48 25.5" fill="none" stroke="url(#mfNavRibbon)" stroke-width="2.6" stroke-linecap="round" />
+            <path d="M48.5 9.5 L49.8 12.7 L53 14 L49.8 15.3 L48.5 18.5 L47.2 15.3 L44 14 L47.2 12.7 Z" fill="#e0f2fe" />
+          </svg>
         </div>
         <div class="brand-text">
           <span class="brand-title">Manga<span class="gradient-text">Flow</span></span>
@@ -393,6 +481,48 @@
     <div id="search-view" class="view-section" style="display: none;"></div>
   </main>
 
+  <!-- Minimalist Brand Footer -->
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div class="footer-brand-col">
+        <div class="footer-brand-row" onclick="app.navigate('home')">
+          <svg class="footer-logo-svg" viewBox="0 0 64 64" width="32" height="32" aria-hidden="true">
+            <defs>
+              <linearGradient id="mfFootBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#1a1f36" />
+                <stop offset="100%" stop-color="#0b0d17" />
+              </linearGradient>
+              <linearGradient id="mfFootLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#38bdf8" />
+                <stop offset="100%" stop-color="#8b5cf6" />
+              </linearGradient>
+              <linearGradient id="mfFootRight" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#818cf8" />
+                <stop offset="100%" stop-color="#ec4899" />
+              </linearGradient>
+            </defs>
+            <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#mfFootBg)" stroke="#6366f1" stroke-opacity="0.45" stroke-width="1.6" />
+            <path d="M12 20.5 C12 18.2 13.8 16.7 16 17.2 C22.5 18.6 27.8 21.8 31.2 26.2 L31.2 47.4 C27.2 43.4 21.6 41.2 14.8 41.4 C13.2 41.4 12 40.2 12 38.6 Z" fill="url(#mfFootLeft)" />
+            <path d="M52 20.5 C52 18.2 50.2 16.7 48 17.2 C41.5 18.6 36.2 21.8 32.8 26.2 L32.8 47.4 C36.8 43.4 42.4 41.2 49.2 41.4 C50.8 41.4 52 40.2 52 38.6 Z" fill="url(#mfFootRight)" />
+            <path d="M32 24.5 L33.4 26.6 L33.4 48.2 L32 49.4 L30.6 48.2 L30.6 26.6 Z" fill="#f8fafc" opacity="0.9" />
+          </svg>
+          <span class="footer-brand-title">Manga<span class="gradient-text">Flow</span></span>
+        </div>
+        <p class="footer-desc">Platform baca manga, manhwa, dan manhua modern dengan pengalaman cepat, nyaman di mata, dan bebas iklan.</p>
+      </div>
+      <div class="footer-links-col">
+        <button type="button" class="footer-link-btn" onclick="app.navigate('home')">Jelajah</button>
+        <button type="button" class="footer-link-btn" onclick="app.navigate('latest')">Terbaru</button>
+        <button type="button" class="footer-link-btn" onclick="app.navigate('library')">Favorit</button>
+        <button type="button" class="footer-link-btn" onclick="app.navigate('history')">Riwayat</button>
+      </div>
+      <div class="footer-meta-col">
+        <span class="footer-status-pill"><span class="footer-status-dot"></span> Server 1 &amp; 2 Online</span>
+        <span class="footer-copy">&copy; MangaFlow Ultra</span>
+      </div>
+    </div>
+  </footer>
+
   <!-- Fullscreen Manga Reader Modal -->
   <div id="reader-overlay" class="reader-overlay" style="display: none;">
     <!-- Reader Top HUD -->
@@ -552,10 +682,10 @@
     <!-- Reader Content Workspace -->
     <div class="reader-workspace" id="reader-workspace">
       <!-- Loading Spinner / Indicator -->
-      <div class="reader-loader" id="reader-loader">
-        <div class="spinner"></div>
+      <div class="reader-loader" id="reader-loader" role="status" aria-live="polite">
+        <progress aria-label="Memuat halaman manga" class="loading-spinner reader-loading-spinner"></progress>
         <p class="loader-text">Menyiapkan halaman manga...</p>
-        <span class="loader-sub">Anti-fail proxy & fallback aktif</span>
+        <span class="loader-sub">Anti-fail proxy &amp; fallback aktif</span>
       </div>
 
       <!-- Error State with Retry -->

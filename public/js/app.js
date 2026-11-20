@@ -7,7 +7,11 @@ const app = {
   selectedManga: null,
   trendingData: [],
   heroIndex: 0,
+  heroItemsCount: 0,
   heroInterval: null,
+  heroPaused: false,
+  splashDismissed: false,
+  topLoaderTimer: null,
   searchTimeout: null,
   filterTags: [],
   selectedFilterTags: new Set(),
@@ -17,6 +21,14 @@ const app = {
   chaptersDisplayLimit: 80,
 
   async init() {
+    const bootStart = Date.now();
+    // Hard failsafe so visitors are never stuck on splash screen even on slow networks
+    setTimeout(() => this.hideSplashScreen(), 2400);
+
+    if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      this.heroPaused = true;
+    }
+
     Reader.init();
     this.bindGlobalEvents();
     this.updateBadgeCounts();
@@ -34,6 +46,46 @@ const app = {
 
     // Initialize SPA Hash Router
     this.initRouter();
+
+    const elapsed = Date.now() - bootStart;
+    const minHold = Math.max(0, 300 - elapsed);
+    setTimeout(() => this.hideSplashScreen(), minHold);
+  },
+
+  hideSplashScreen() {
+    if (this.splashDismissed) return;
+    this.splashDismissed = true;
+    const splash = document.getElementById('app-splash-screen');
+    if (!splash) return;
+
+    splash.classList.add('is-hiding');
+    const finish = () => splash.classList.add('is-hidden');
+    const activeAnimations = typeof splash.getAnimations === 'function' ? splash.getAnimations() : [];
+    if (activeAnimations.length === 0) {
+      finish();
+      return;
+    }
+    splash.addEventListener('transitionend', finish, { once: true });
+    setTimeout(finish, 480);
+  },
+
+  showTopLoader() {
+    const bar = document.getElementById('top-loading-bar');
+    if (!bar) return;
+    clearTimeout(this.topLoaderTimer);
+    bar.classList.remove('done');
+    bar.classList.add('active');
+  },
+
+  finishTopLoader() {
+    const bar = document.getElementById('top-loading-bar');
+    if (!bar) return;
+    bar.classList.remove('active');
+    bar.classList.add('done');
+    clearTimeout(this.topLoaderTimer);
+    this.topLoaderTimer = setTimeout(() => {
+      bar.classList.remove('done');
+    }, 320);
   },
 
   bindGlobalEvents() {
@@ -266,15 +318,18 @@ const app = {
       document.getElementById('home-view').style.display = 'block';
       this.renderContinueReading();
     } else if (viewName === 'latest') {
-      this.renderLatestView();
+      this.showTopLoader();
+      this.renderLatestView().finally(() => this.finishTopLoader());
     } else if (viewName === 'library') {
       this.renderLibraryView();
     } else if (viewName === 'history') {
       this.renderHistoryView();
     } else if (viewName === 'manga') {
-      this.renderMangaDetailView(params.id);
+      this.showTopLoader();
+      this.renderMangaDetailView(params.id).finally(() => this.finishTopLoader());
     } else if (viewName === 'search') {
-      this.renderSearchView(params);
+      this.showTopLoader();
+      this.renderSearchView(params).finally(() => this.finishTopLoader());
     }
   },
 
@@ -299,6 +354,8 @@ const app = {
       return;
     }
 
+    this.heroItemsCount = items.length;
+    this.heroIndex = 0;
     container.innerHTML = '';
 
     items.forEach((item, index) => {
@@ -307,21 +364,22 @@ const app = {
       slide.dataset.index = index;
 
       const tagsHtml = (item.tags || []).slice(0, 3)
-        .map((t) => `<span class="hero-tag">${t}</span>`)
+        .map((t) => `<span class="hero-tag">${this.escapeHtml(t)}</span>`)
         .join('');
 
       const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
       const smallCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
+      const priorityAttr = index === 0 ? 'fetchpriority="high"' : 'fetchpriority="low" loading="lazy"';
 
       slide.innerHTML = `
-        <img class="hero-backdrop-img" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
+        <img class="hero-backdrop-img" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" ${priorityAttr} onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="hero-gradient-overlay"></div>
         <div class="hero-content">
-          <img class="hero-poster" src="${this.escapeHtml(smallCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
+          <img class="hero-poster" src="${this.escapeHtml(smallCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" ${priorityAttr} onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
           <div class="hero-details">
             <div class="hero-tag-list">${tagsHtml}</div>
-            <h1 class="hero-title">${item.title}</h1>
-            <p class="hero-synopsis">${item.description.replace(/\[\/?\w+\]/g, '')}</p>
+            <h1 class="hero-title">${this.escapeHtml(item.title)}</h1>
+            <p class="hero-synopsis">${this.escapeHtml((item.description || '').replace(/\[\/?\w+\]/g, ''))}</p>
             <div class="hero-actions">
               <button class="btn btn-primary" onclick="app.navigate('manga', { id: '${item.id}' })">
                 <i class="ri-book-read-line"></i> Mulai Baca
@@ -337,6 +395,22 @@ const app = {
       container.appendChild(slide);
     });
 
+    // Accessible Carousel Controls (Prev, Pause/Play, Next)
+    const controlsWrap = document.createElement('div');
+    controlsWrap.className = 'hero-controls';
+    controlsWrap.innerHTML = `
+      <button type="button" class="hero-ctrl-btn" aria-label="Slide sebelumnya" title="Slide sebelumnya" onclick="app.stepHeroSlide(-1)">
+        <i class="ri-arrow-left-s-line"></i>
+      </button>
+      <button type="button" class="hero-ctrl-btn" id="hero-pause-btn" aria-label="${this.heroPaused ? 'Putar slide otomatis' : 'Jeda slide otomatis'}" title="${this.heroPaused ? 'Putar slide otomatis' : 'Jeda slide otomatis'}" onclick="app.toggleHeroPause()">
+        <i class="${this.heroPaused ? 'ri-play-fill' : 'ri-pause-fill'}"></i>
+      </button>
+      <button type="button" class="hero-ctrl-btn" aria-label="Slide selanjutnya" title="Slide selanjutnya" onclick="app.stepHeroSlide(1)">
+        <i class="ri-arrow-right-s-line"></i>
+      </button>
+    `;
+    container.appendChild(controlsWrap);
+
     // Navigation Dots
     const dotsWrap = document.createElement('div');
     dotsWrap.className = 'hero-nav-dots';
@@ -348,12 +422,35 @@ const app = {
     });
     container.appendChild(dotsWrap);
 
-    // Auto rotate every 6s
+    this.startHeroAutoRotate();
+  },
+
+  startHeroAutoRotate() {
     clearInterval(this.heroInterval);
+    if (this.heroPaused || this.heroItemsCount <= 1) return;
     this.heroInterval = setInterval(() => {
-      this.heroIndex = (this.heroIndex + 1) % items.length;
+      this.heroIndex = (this.heroIndex + 1) % this.heroItemsCount;
       this.setHeroSlide(this.heroIndex);
     }, 6000);
+  },
+
+  stepHeroSlide(delta) {
+    if (this.heroItemsCount <= 1) return;
+    this.heroIndex = (this.heroIndex + delta + this.heroItemsCount) % this.heroItemsCount;
+    this.setHeroSlide(this.heroIndex);
+    this.startHeroAutoRotate();
+  },
+
+  toggleHeroPause() {
+    this.heroPaused = !this.heroPaused;
+    const btn = document.getElementById('hero-pause-btn');
+    if (btn) {
+      const label = this.heroPaused ? 'Putar slide otomatis' : 'Jeda slide otomatis';
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      btn.innerHTML = `<i class="${this.heroPaused ? 'ri-play-fill' : 'ri-pause-fill'}"></i>`;
+    }
+    this.startHeroAutoRotate();
   },
 
   setHeroSlide(index) {
@@ -467,11 +564,12 @@ const app = {
               <i class="ri-checkbox-blank-circle-fill" style="font-size: 0.55rem;"></i> ${statusText}
             </span>
           `}
-          ${item.tags && item.tags[0] ? `<span class="card-badge">${item.tags[0]}</span>` : ''}
+          ${item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
         </div>
+        <span class="card-read-pill"><i class="ri-book-open-line"></i> Baca</span>
       </div>
       <div class="card-body">
-        <h4 class="card-title" title="${item.title}">${item.title}</h4>
+        <h4 class="card-title" title="${this.escapeHtml(item.title)}">${this.escapeHtml(item.title)}</h4>
         <div class="card-meta">
           <span>${item.year ? item.year : (isPill ? 'Server Komplit' : 'Manga')}</span>
           <span style="color: #fbbf24;"><i class="ri-star-fill"></i> Populer</span>

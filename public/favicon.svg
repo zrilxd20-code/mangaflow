@@ -1,36 +1,55 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="mfGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="mfCanvasBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#171b2d" />
+      <stop offset="55%" stop-color="#0d101c" />
+      <stop offset="100%" stop-color="#07080f" />
+    </linearGradient>
+    <linearGradient id="mfRimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.7" />
+      <stop offset="50%" stop-color="#818cf8" stop-opacity="0.85" />
+      <stop offset="100%" stop-color="#c084fc" stop-opacity="0.7" />
+    </linearGradient>
+    <linearGradient id="mfLeftWing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="55%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+    <linearGradient id="mfRightWing" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#818cf8" />
-      <stop offset="50%" stop-color="#6366f1" />
-      <stop offset="100%" stop-color="#a855f7" />
+      <stop offset="55%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#ec4899" />
     </linearGradient>
-    <linearGradient id="mfBg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#181a24" />
-      <stop offset="100%" stop-color="#0b0c12" />
+    <linearGradient id="mfRibbonFlow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.95" />
+      <stop offset="50%" stop-color="#c4b5fd" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#f472b6" stop-opacity="0.95" />
     </linearGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#6366f1" flood-opacity="0.5"/>
+    <filter id="mfGlow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#6366f1" flood-opacity="0.55" />
     </filter>
   </defs>
-  
-  <!-- Rounded Base Canvas -->
-  <rect width="64" height="64" rx="16" fill="url(#mfBg)" stroke="#312e81" stroke-width="1.5" />
-  
-  <!-- Stylized Manga Open Book with Flowing Pages -->
-  <g filter="url(#glow)" transform="translate(10, 12)">
-    <!-- Left Page Wing -->
-    <path d="M22 6 C16 3, 6 4, 2 6 C1.5 6.2, 1 6.8, 1 7.5 L1 30.5 C1 31.5, 2 32, 2.8 31.7 C7 30, 16 29, 21.5 33 C21.8 33.2, 22.2 33, 22.2 32.5 L22 6 Z" fill="url(#mfGrad)" />
-    <!-- Right Page Wing -->
-    <path d="M22 6 C28 3, 38 4, 42 6 C42.5 6.2, 43 6.8, 43 7.5 L43 30.5 C43 31.5, 42 32, 41.2 31.7 C37 30, 28 29, 22.5 33 C22.2 33.2, 21.8 33, 21.8 32.5 L22 6 Z" fill="url(#mfGrad)" opacity="0.9" />
-    <!-- Spine Center Neon Notch -->
-    <path d="M21.5 6 L22.5 6 L22.5 33 L21.5 33 Z" fill="#ffffff" opacity="0.8" />
-    <!-- Speed Lines / Manga Flow Sparkle -->
-    <circle cx="34" cy="12" r="1.5" fill="#c084fc" />
-    <circle cx="10" cy="14" r="1.2" fill="#a5b4fc" />
-    <path d="M20 12 Q12 11 6 13" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
-    <path d="M24 12 Q32 11 38 13" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
-    <path d="M20 18 Q12 17 6 19" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
-    <path d="M24 18 Q32 17 38 19" stroke="#ffffff" stroke-width="1.2" stroke-linecap="round" fill="none" opacity="0.4" />
+
+  <!-- Squircle Luxury Base -->
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#mfCanvasBg)" stroke="url(#mfRimGrad)" stroke-width="1.6" />
+  <!-- Ambient Inner Aura -->
+  <circle cx="32" cy="30" r="20" fill="#6366f1" opacity="0.14" />
+
+  <!-- Sculpted MangaFlow Open-Book + Monogram "M" Wings -->
+  <g filter="url(#mfGlow)">
+    <!-- Left Sweeping Page / M-Pillar -->
+    <path d="M12 20.5 C12 18.2 13.8 16.7 16 17.2 C22.5 18.6 27.8 21.8 31.2 26.2 L31.2 47.4 C27.2 43.4 21.6 41.2 14.8 41.4 C13.2 41.4 12 40.2 12 38.6 Z" fill="url(#mfLeftWing)" />
+    <!-- Right Sweeping Page / M-Pillar -->
+    <path d="M52 20.5 C52 18.2 50.2 16.7 48 17.2 C41.5 18.6 36.2 21.8 32.8 26.2 L32.8 47.4 C36.8 43.4 42.4 41.2 49.2 41.4 C50.8 41.4 52 40.2 52 38.6 Z" fill="url(#mfRightWing)" />
+    <!-- Center Luminous Spine & Flow Peak -->
+    <path d="M32 24.5 L33.4 26.6 L33.4 48.2 L32 49.4 L30.6 48.2 L30.6 26.6 Z" fill="#f8fafc" opacity="0.92" />
+    <!-- Flowing Ribbon Energy Wave Across Pages -->
+    <path d="M16 33.5 C21.5 29 26.5 30.5 32 35.2 C37.5 30.5 42.5 29 48 25.5" fill="none" stroke="url(#mfRibbonFlow)" stroke-width="2.4" stroke-linecap="round" />
+    <path d="M16.5 26 C21 25.4 25.2 26.8 28.5 29.2" fill="none" stroke="#ffffff" stroke-width="1.35" stroke-linecap="round" opacity="0.55" />
+    <path d="M47.5 34.8 C43.2 34.4 39.2 35.6 35.6 38.2" fill="none" stroke="#ffffff" stroke-width="1.35" stroke-linecap="round" opacity="0.45" />
   </g>
+
+  <!-- Crisp 4-Point Manga Sparkle Star -->
+  <path d="M48.5 9.5 L49.8 12.7 L53 14 L49.8 15.3 L48.5 18.5 L47.2 15.3 L44 14 L47.2 12.7 Z" fill="#e0f2fe" />
+  <circle cx="17" cy="12.5" r="1.4" fill="#a5b4fc" opacity="0.85" />
 </svg>

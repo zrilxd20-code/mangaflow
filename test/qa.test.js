@@ -530,6 +530,25 @@ async function runComprehensiveQA() {
       !/\.reader-workspace\s*\{[^}]*filter\s*:\s*brightness/is.test(readerCss)
     );
 
+    // 9.9 Premium Visual Overhaul, Bespoke SVG Logo & Comfortable Loading Screen QA
+    const rFavicon = await fetch(`${baseUrl}/favicon.svg`);
+    const faviconSvg = await rFavicon.text();
+    assertTest(
+      'Logo SVG Kustom, Splash Loading Screen, Semantic Spinner & Kontrol Hero Aktif',
+      rFavicon.status === 200 &&
+      faviconSvg.includes('mfLeftWing') &&
+      indexHtml.includes('id="app-splash-screen"') &&
+      indexHtml.includes('id="top-loading-bar"') &&
+      indexHtml.includes('class="loading-spinner"') &&
+      indexHtml.includes('class="brand-logo-svg"') &&
+      indexHtml.includes('class="site-footer"') &&
+      appJsContent.includes('hideSplashScreen()') &&
+      appJsContent.includes('toggleHeroPause()') &&
+      appJsContent.includes('fetchpriority="high"') &&
+      styleCss.includes('scrollbar-color') &&
+      styleCss.includes('progress.loading-spinner:indeterminate')
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {
