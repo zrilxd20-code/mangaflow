@@ -500,26 +500,6 @@
   to { transform: rotate(360deg); }
 }
 
-/* Single Page Fit Modes */
-.reader-single-view.fit-height .single-page-wrapper img {
-  height: 100%;
-  width: auto;
-  max-width: 100vw;
-  max-height: 100%;
-}
-
-.reader-single-view.fit-width .single-page-wrapper img {
-  width: 100%;
-  max-width: 1000px;
-  height: auto;
-  max-height: none;
-}
-
-.reader-single-view.fit-contain .single-page-wrapper img {
-  max-height: 100%;
-  max-width: 100%;
-}
-
 /* RTL (Right to Left) vs LTR indicators */
 .reader-single-view.direction-rtl .single-nav-btn.prev {
   right: 0;
@@ -715,11 +695,8 @@
 
 /* ===================================================
    Reader Pro: Brightness Dimmer
+   (Applied directly on .strip-page-img and .single-page-wrapper img)
    =================================================== */
-.reader-workspace {
-  filter: brightness(var(--reader-brightness, 1));
-  transition: filter 0.15s ease-out;
-}
 
 /* ===================================================
    Reader Pro: Settings Drawer / Modal
@@ -1166,26 +1143,26 @@
     }
   }
 
-  /* Webtoon Strip: Full 100% width on Mobile */
+  /* Webtoon Strip: Full 100% width on Mobile with Zoom support */
   .reader-strip,
   .reader-strip.width-compact,
   .reader-strip.width-standard,
   .reader-strip.width-wide,
   .reader-strip.width-full {
-    max-width: 100vw !important;
-    width: 100vw !important;
+    max-width: calc(100vw * var(--reader-zoom, 1)) !important;
+    width: calc(100vw * var(--reader-zoom, 1)) !important;
     padding: 0 !important;
     margin: 0 !important;
   }
   .strip-page-wrap {
-    width: 100vw !important;
-    max-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
   }
   .strip-page-img {
-    width: 100vw !important;
-    max-width: 100vw !important;
+    width: 100% !important;
+    max-width: 100% !important;
     border-radius: 0 !important;
     box-shadow: none !important;
   }
@@ -1224,6 +1201,7 @@
   /* Preload Indicator Pill on Mobile */
   .reader-preload-pill {
     top: 58px;
+    bottom: auto;
     right: 8px;
     font-size: 0.72rem;
     padding: 3px 8px;

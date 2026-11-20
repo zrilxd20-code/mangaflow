@@ -1311,7 +1311,7 @@ h1, h2, h3, h4, .brand-title {
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
   backdrop-filter: blur(8px);
-  z-index: 200;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2125,6 +2125,11 @@ h1, h2, h3, h4, .brand-title {
     padding: 6px 12px;
     font-size: 0.8rem;
   }
+  .hero-nav-dots {
+    top: 12px;
+    right: 14px;
+    bottom: auto;
+  }
   .manga-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
@@ -2335,6 +2340,7 @@ h1, h2, h3, h4, .brand-title {
   /* Modals: Mobile Bottom-Sheet or Centered Compact */
   .modal-backdrop {
     padding: 10px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
     align-items: flex-end;
   }
   .modal-box {
@@ -2455,6 +2461,11 @@ h1, h2, h3, h4, .brand-title {
   .hero-actions .btn {
     padding: 6px 12px;
     font-size: 0.8rem;
+  }
+  .hero-nav-dots {
+    top: 12px;
+    right: 14px;
+    bottom: auto;
   }
   .detail-actions-row {
     display: grid;
@@ -3066,5 +3077,53 @@ h1, h2, h3, h4, .brand-title {
   .comments-section {
     padding: 20px 14px;
     border-radius: var(--radius-lg);
+  }
+}
+
+/* Mobile Overrides for Auth & Form Elements (Cascade Priority) */
+@media (max-width: 560px) {
+  .auth-nav-btn {
+    padding: 6px 12px;
+    font-size: 0.82rem;
+  }
+  .user-name-text {
+    display: none;
+  }
+  .user-profile-btn {
+    padding: 3px 6px;
+  }
+  .auth-modal-box {
+    border-radius: 20px 20px 0 0 !important;
+  }
+  .auth-tabs {
+    margin: 12px 14px 0 14px;
+  }
+  .auth-form {
+    padding: 16px 14px;
+    gap: 12px;
+  }
+  .form-input {
+    font-size: 16px;
+    padding: 10px 36px;
+  }
+  .form-icon {
+    left: 10px;
+  }
+  .auth-submit-btn {
+    padding: 12px;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .auth-nav-btn span {
+    display: none;
+  }
+  .auth-nav-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    justify-content: center;
+    border-radius: var(--radius-md);
   }
 }

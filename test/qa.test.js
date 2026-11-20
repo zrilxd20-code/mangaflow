@@ -520,6 +520,16 @@ async function runComprehensiveQA() {
       readerJsContent.includes('Melanjutkan dari Halaman')
     );
 
+    // 9.8 UI/CSS Bug Fixes: Modal Z-Index, Reader Linear Brightness & Mobile Preload Pill
+    const rReaderCss = await fetch(`${baseUrl}/css/reader.css`);
+    const readerCss = await rReaderCss.text();
+    assertTest(
+      'Perbaikan UI/CSS Aktif (.modal-backdrop z-index: 1200, .reader-preload-pill bottom: auto, Single Brightness Filter)',
+      /\.modal-backdrop\s*\{[^}]*z-index\s*:\s*1200/s.test(styleCss) &&
+      /\.reader-preload-pill\s*\{[^}]*bottom\s*:\s*auto/s.test(readerCss) &&
+      !/\.reader-workspace\s*\{[^}]*filter\s*:\s*brightness/is.test(readerCss)
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {
