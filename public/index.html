@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.7" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.7" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css" />
-  <link rel="stylesheet" href="./css/reader.css" />
+  <link rel="stylesheet" href="./css/style.css?v=1.0.7" />
+  <link rel="stylesheet" href="./css/reader.css?v=1.0.7" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -1044,16 +1044,26 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js"></script>
-  <script src="./js/api.js"></script>
-  <script src="./js/reader.js"></script>
-  <script src="./js/app.js"></script>
+  <script src="./js/state.js?v=1.0.7"></script>
+  <script src="./js/api.js?v=1.0.7"></script>
+  <script src="./js/reader.js?v=1.0.7"></script>
+  <script src="./js/app.js?v=1.0.7"></script>
   
-  <!-- Service Worker Registration for PWA & Offline Support -->
+  <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js').catch((err) => {
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        let reloadedForUpdate = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (hadController && !reloadedForUpdate) {
+            reloadedForUpdate = true;
+            window.location.reload();
+          }
+        });
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((reg) => {
+          reg.update().catch(() => {});
+        }).catch((err) => {
           console.warn('[SW Registration failed]:', err);
         });
       });

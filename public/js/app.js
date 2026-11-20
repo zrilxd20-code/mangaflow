@@ -13,6 +13,8 @@ const app = {
   splashDismissed: false,
   topLoaderTimer: null,
   searchTimeout: null,
+  quickSearchAbort: null,
+  searchViewAbort: null,
   filterTags: [],
   selectedFilterTags: new Set(),
   selectedSort: 'relevance',
@@ -22,8 +24,8 @@ const app = {
 
   async init() {
     const bootStart = Date.now();
-    // Hard failsafe so visitors are never stuck on splash screen even on slow networks
-    setTimeout(() => this.hideSplashScreen(), 2400);
+    // Hard failsafe so visitors see content fast even on slow networks
+    setTimeout(() => this.hideSplashScreen(), 1200);
 
     if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.heroPaused = true;
@@ -34,21 +36,18 @@ const app = {
     this.updateBadgeCounts();
     this.updateAuthUI();
     this.initPWA();
-
-    // Initial data load
-    await Promise.allSettled([
-      this.loadHeroAndTrending(),
-      this.loadLatestUpdates(),
-      this.loadTags()
-    ]);
-
     this.renderContinueReading();
-
-    // Initialize SPA Hash Router
     this.initRouter();
 
+    // Launch all initial requests in parallel; dismiss splash as soon as Hero/Trending is ready
+    const heroPromise = this.loadHeroAndTrending();
+    this.loadLatestUpdates();
+    this.loadTags();
+
+    await Promise.allSettled([heroPromise]);
+
     const elapsed = Date.now() - bootStart;
-    const minHold = Math.max(0, 300 - elapsed);
+    const minHold = Math.max(0, 260 - elapsed);
     setTimeout(() => this.hideSplashScreen(), minHold);
   },
 
@@ -106,7 +105,7 @@ const app = {
 
         this.searchTimeout = setTimeout(() => {
           this.executeQuickSearch(q, 'quick-search-results');
-        }, 320);
+        }, 200);
       });
 
       searchInput.addEventListener('keydown', (e) => {
@@ -138,7 +137,7 @@ const app = {
 
         this.searchTimeout = setTimeout(() => {
           this.executeQuickSearch(q, 'mobile-quick-search-results');
-        }, 320);
+        }, 200);
       });
 
       mobSearchInput.addEventListener('keydown', (e) => {
@@ -604,8 +603,8 @@ const app = {
       card.innerHTML = `
         <img class="continue-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(thumbCover)}" alt="${this.escapeHtml(item.mangaTitle)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="continue-info">
-          <div class="continue-title">${item.mangaTitle}</div>
-          <div class="continue-sub">Chapter ${item.chapterNum} (Hal. ${item.page}/${item.totalPages})</div>
+          <div class="continue-title">${this.escapeHtml(item.mangaTitle)}</div>
+          <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${item.page}/${item.totalPages})</div>
           <button class="btn btn-primary continue-btn" onclick="event.stopPropagation(); app.resumeReading('${item.mangaId}', '${item.chapterId}')">
             <i class="ri-play-fill"></i> Lanjut
           </button>
@@ -806,7 +805,7 @@ const app = {
                 class="comment-textarea"
                 rows="3"
                 maxlength="600"
-                placeholder="${State.isLoggedIn() ? `Tulis pendapat atau review Anda tentang ${manga.title}...` : 'Masuk ke akun MangaFlow untuk ikut berkomentar dan berdiskusi...'}"
+                placeholder="${State.isLoggedIn() ? `Tulis pendapat atau review Anda tentang ${this.escapeHtml(manga.title)}...` : 'Masuk ke akun MangaFlow untuk ikut berkomentar dan berdiskusi...'}"
               ></textarea>
               <div class="comment-form-footer">
                 <span class="comment-hint">
@@ -847,7 +846,7 @@ const app = {
         <div class="section-container" style="text-align: center; padding: 60px 0;">
           <i class="ri-error-warning-line" style="font-size: 3rem; color: var(--danger);"></i>
           <h2 style="margin: 14px 0;">Gagal Memuat Detail Manga</h2>
-          <p style="color: var(--text-muted); margin-bottom: 20px;">${err.message}</p>
+          <p style="color: var(--text-muted); margin-bottom: 20px;">${this.escapeHtml(err.message)}</p>
           <button class="btn btn-primary" onclick="app.navigate('home')">Kembali ke Beranda</button>
         </div>
       `;
@@ -1215,11 +1214,17 @@ const app = {
       });
     }
 
+    if (this.searchViewAbort) {
+      this.searchViewAbort.abort();
+    }
+    this.searchViewAbort = new AbortController();
+    const { signal } = this.searchViewAbort;
+
     try {
       let res;
       if (this.activeSource === 'mangapill') {
         const queryText = params.q || 'one piece';
-        res = await Api.searchMangaPill(queryText, page);
+        res = await Api.searchMangaPill(queryText, page, signal);
       } else {
         const queryParams = {
           q: params.q || '',
@@ -1228,8 +1233,10 @@ const app = {
           tags: Array.from(this.selectedFilterTags).join(','),
           page
         };
-        res = await Api.search(queryParams);
+        res = await Api.search(queryParams, signal);
       }
+
+      if (signal.aborted) return;
 
       const grid = document.getElementById('search-results-grid');
       const pagination = document.getElementById('search-pagination');
@@ -1280,23 +1287,44 @@ const app = {
         }
       }
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error(err);
     }
   },
 
   // ---------------- Quick Search Dropdown & Unified Query ----------------
   async executeQuickSearch(q, targetId) {
+    if (this.quickSearchAbort) {
+      this.quickSearchAbort.abort();
+    }
+    this.quickSearchAbort = new AbortController();
+    const { signal } = this.quickSearchAbort;
+
+    const dropdown = document.getElementById(targetId);
+    if (dropdown) {
+      const serverLabel = this.activeSource === 'mangapill' ? 'Server 2 (MangaPill)' : 'Server 1 (MangaDex)';
+      dropdown.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 12px;color:var(--text-muted);font-size:0.86rem;">
+          <progress aria-label="Mencari" class="loading-spinner" style="--size:22px;--thickness:2.5px;"></progress>
+          <span>Mencari "<strong>${this.escapeHtml(q)}</strong>" di ${serverLabel}...</span>
+        </div>
+      `;
+      dropdown.classList.add('open');
+    }
+
     try {
       let items = [];
       if (this.activeSource === 'mangapill') {
-        const res = await Api.searchMangaPill(q);
+        const res = await Api.searchMangaPill(q, 1, signal);
         items = (res.data || []).slice(0, 7);
       } else {
-        const res = await Api.search({ q, limit: 7 });
-        items = res.data || [];
+        const res = await Api.search({ q, limit: 7 }, signal);
+        items = (res.data || []).slice(0, 7);
       }
+      if (signal.aborted) return;
       this.renderQuickSearchDropdown(items, targetId, q);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       console.error('Quick search error:', err);
     }
   },
@@ -1352,11 +1380,11 @@ const app = {
       el.innerHTML = `
         <img class="search-item-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="search-item-info">
-          <div class="search-item-title">${item.title}</div>
+          <div class="search-item-title">${this.escapeHtml(item.title)}</div>
           <div class="search-item-meta">
-            <span>${item.status || 'Publishing'}</span>
+            <span>${this.escapeHtml(item.status || 'Publishing')}</span>
             <span>•</span>
-            <span style="${isItemPill ? 'color: #10b981; font-weight: 600;' : ''}">${isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? item.tags[0] : 'Manga')}</span>
+            <span style="${isItemPill ? 'color: #10b981; font-weight: 600;' : ''}">${isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? this.escapeHtml(item.tags[0]) : 'Manga')}</span>
           </div>
         </div>
       `;

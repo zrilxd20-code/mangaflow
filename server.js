@@ -11,9 +11,10 @@ const mangapill = require('./providers/mangapill');
 
 // ----------------------------------------------------
 // ANTI-ISP BLOCKING & DYNAMIC DNS-OVER-HTTPS (DoH) LAYER
-// Resolves MangaDex domains directly via DoH / legitimate IPs,
-// completely bypassing ISP DNS blocking (aduankonten.id / 36.86.63.185)
+// Resolves MangaDex domains directly via DoH / legitimate IPs on local ISPs,
+// skipped on Vercel/AWS serverless where cloud DNS is unrestricted
 // ----------------------------------------------------
+const isServerless = Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 const dnsCache = new Map();
 const DEFAULT_MANGADEX_IPS = ['45.129.229.1', '45.129.229.2'];
 
@@ -37,36 +38,38 @@ async function resolveDoH(hostname) {
   return null;
 }
 
-// Prefetch and periodically refresh DoH cache
-const prefetchTimeout = setTimeout(() => {
-  resolveDoH('api.mangadex.org').catch(() => {});
-  resolveDoH('uploads.mangadex.org').catch(() => {});
-}, 10);
-if (prefetchTimeout.unref) prefetchTimeout.unref();
+if (!isServerless) {
+  // Prefetch and periodically refresh DoH cache for local ISP bypass
+  const prefetchTimeout = setTimeout(() => {
+    resolveDoH('api.mangadex.org').catch(() => {});
+    resolveDoH('uploads.mangadex.org').catch(() => {});
+  }, 10);
+  if (prefetchTimeout.unref) prefetchTimeout.unref();
 
-const prefetchInterval = setInterval(() => {
-  resolveDoH('api.mangadex.org').catch(() => {});
-  resolveDoH('uploads.mangadex.org').catch(() => {});
-}, 3600 * 1000);
-if (prefetchInterval.unref) prefetchInterval.unref();
+  const prefetchInterval = setInterval(() => {
+    resolveDoH('api.mangadex.org').catch(() => {});
+    resolveDoH('uploads.mangadex.org').catch(() => {});
+  }, 3600 * 1000);
+  if (prefetchInterval.unref) prefetchInterval.unref();
 
-const origLookup = dns.lookup;
-dns.lookup = function (hostname, options, callback) {
-  if (typeof options === 'function') {
-    callback = options;
-    options = {};
-  }
-  if (hostname && (hostname === 'mangadex.org' || hostname.endsWith('.mangadex.org'))) {
-    const cached = dnsCache.get(hostname);
-    const resolvedIPs = cached && cached.ips && cached.ips.length > 0 ? cached.ips : DEFAULT_MANGADEX_IPS;
-    const ipRecords = resolvedIPs.map((ip) => ({ address: ip, family: 4 }));
-    if (options && options.all) {
-      return callback(null, ipRecords);
+  const origLookup = dns.lookup;
+  dns.lookup = function (hostname, options, callback) {
+    if (typeof options === 'function') {
+      callback = options;
+      options = {};
     }
-    return callback(null, ipRecords[0].address, ipRecords[0].family);
-  }
-  return origLookup(hostname, options, callback);
-};
+    if (hostname && (hostname === 'mangadex.org' || hostname.endsWith('.mangadex.org'))) {
+      const cached = dnsCache.get(hostname);
+      const resolvedIPs = cached && cached.ips && cached.ips.length > 0 ? cached.ips : DEFAULT_MANGADEX_IPS;
+      const ipRecords = resolvedIPs.map((ip) => ({ address: ip, family: 4 }));
+      if (options && options.all) {
+        return callback(null, ipRecords);
+      }
+      return callback(null, ipRecords[0].address, ipRecords[0].family);
+    }
+    return origLookup(hostname, options, callback);
+  };
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -230,7 +233,19 @@ app.get('/', async (req, res, next) => {
   }
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('sw.js')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      } else if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=120, must-revalidate');
+      } else if (/\.(css|js|svg|json|png|jpg|webp|ico)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
+      }
+    }
+  })
+);
 
 // ----------------------------------------------------
 // IN-MEMORY AUTH RATE LIMITER (BRUTE FORCE DEFENSE)
@@ -297,10 +312,10 @@ const registerLimiter = new AuthRateLimiter({
 const MANGADEX_API = 'https://api.mangadex.org';
 const USER_AGENT = 'MangaFlow/1.0.0 (https://github.com/mangaflow; contact@mangaflow.app)';
 
-// Rate Limiter / Request Queue (Token Bucket: max 4 requests per second)
+// Non-Blocking Token-Bucket Request Pacer (spaces starts at max 8 req/s without serial blocking)
 class RequestQueue {
-  constructor(maxPerSecond = 4) {
-    this.interval = 1000 / maxPerSecond;
+  constructor(maxPerSecond = 8) {
+    this.interval = Math.floor(1000 / maxPerSecond);
     this.lastRun = 0;
     this.queue = [];
     this.processing = false;
@@ -325,22 +340,20 @@ class RequestQueue {
       }
       this.lastRun = Date.now();
       const item = this.queue.shift();
-      try {
-        const result = await item.fn();
-        item.resolve(result);
-      } catch (err) {
-        item.reject(err);
-      }
+      // Dispatch concurrently so one slow upstream response never blocks other requests
+      Promise.resolve()
+        .then(() => item.fn())
+        .then(item.resolve, item.reject);
     }
 
     this.processing = false;
   }
 }
 
-const apiQueue = new RequestQueue(4);
+const apiQueue = new RequestQueue(8);
 
-// Resilient Fetch with Exponential Backoff & Retry
-async function resilientFetch(url, options = {}, retries = 3, backoff = 1000) {
+// Resilient Fetch with Timeout & Fast Exponential Backoff
+async function resilientFetch(url, options = {}, retries = 2, backoff = 400) {
   const reqHeaders = {
     'User-Agent': USER_AGENT,
     Accept: 'application/json',
@@ -350,11 +363,15 @@ async function resilientFetch(url, options = {}, retries = 3, backoff = 1000) {
   return apiQueue.enqueue(async () => {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
-        const res = await fetch(url, { ...options, headers: reqHeaders });
+        const res = await fetch(url, {
+          ...options,
+          headers: reqHeaders,
+          signal: options.signal || AbortSignal.timeout(7000)
+        });
 
         if (res.status === 429) {
           // Rate limited by MangaDex: back off
-          const retryAfter = parseInt(res.headers.get('retry-after') || '2', 10);
+          const retryAfter = Math.min(3, parseInt(res.headers.get('retry-after') || '1', 10));
           console.warn(`[MangaDex RateLimit 429] Waiting ${retryAfter}s on attempt ${attempt}`);
           await new Promise((r) => setTimeout(r, retryAfter * 1000));
           continue;
@@ -667,12 +684,12 @@ app.get('/api/latest', async (req, res) => {
 
 // 3. Search Manga with Filters
 app.get('/api/search', async (req, res) => {
-  const { q = '', tags = '', status = '', sort = 'relevance', lang = '', page = '1' } = req.query;
-  const limit = 24;
+  const { q = '', tags = '', status = '', sort = 'relevance', lang = '', page = '1', limit: rawLimit = '24' } = req.query;
+  const limit = Math.max(1, Math.min(24, parseInt(rawLimit, 10) || 24));
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const offset = (pageNum - 1) * limit;
 
-  const cacheKey = `search_${q}_${tags}_${status}_${sort}_${lang}_${pageNum}`;
+  const cacheKey = `search_${q}_${tags}_${status}_${sort}_${lang}_${pageNum}_${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) {
     setEdgeCache(res, 120, 300, 600);
@@ -776,7 +793,10 @@ app.get('/api/manga/:id', async (req, res) => {
 
   try {
     const url = `${MANGADEX_API}/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`;
-    const data = await resilientFetch(url);
+    const [data, statsRes] = await Promise.all([
+      resilientFetch(url),
+      resilientFetch(`${MANGADEX_API}/statistics/manga/${id}`).catch(() => null)
+    ]);
     if (!data.data) throw new Error('Manga not found');
 
     const formatted = formatManga(data.data);
@@ -793,15 +813,11 @@ app.get('/api/manga/:id', async (req, res) => {
     formatted.authors = authors;
     formatted.artists = artists;
 
-    // Get stats (rating & follows)
-    try {
-      const statsRes = await resilientFetch(`${MANGADEX_API}/statistics/manga/${id}`);
-      const stats = statsRes.statistics?.[id];
-      if (stats) {
-        formatted.rating = stats.rating?.bayesian ? stats.rating.bayesian.toFixed(2) : null;
-        formatted.follows = stats.follows || 0;
-      }
-    } catch (_) {}
+    const stats = statsRes?.statistics?.[id];
+    if (stats) {
+      formatted.rating = stats.rating?.bayesian ? stats.rating.bayesian.toFixed(2) : null;
+      formatted.follows = stats.follows || 0;
+    }
 
     cache.set(cacheKey, formatted, 1800); // 30 min
     setEdgeCache(res, 300, 900, 1800);

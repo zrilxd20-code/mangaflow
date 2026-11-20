@@ -1,18 +1,18 @@
 // ===================================================
-// MangaFlow Service Worker (PWA & Offline Resilience)
+// MangaFlow Service Worker (PWA & Network-First Freshness)
 // ===================================================
 
-const CACHE_NAME = 'mangaflow-v1.0.6';
+const CACHE_NAME = 'mangaflow-v1.0.7';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/css/style.css',
-  '/css/reader.css',
-  '/js/state.js',
-  '/js/api.js',
-  '/js/reader.js',
-  '/js/app.js',
-  '/favicon.svg',
+  '/css/style.css?v=1.0.7',
+  '/css/reader.css?v=1.0.7',
+  '/js/state.js?v=1.0.7',
+  '/js/api.js?v=1.0.7',
+  '/js/reader.js?v=1.0.7',
+  '/js/app.js?v=1.0.7',
+  '/favicon.svg?v=1.0.7',
   '/manifest.json'
 ];
 
@@ -45,34 +45,31 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Bypass non-GET requests
-  if (request.method !== 'GET') return;
+  // Bypass non-GET or cross-origin requests
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  // Bypass API and Image Proxy calls from static cache (always network-first)
-  if (url.pathname.startsWith('/api/')) {
+  // Bypass API and Image Proxy calls from SW cache
+  if (url.pathname.startsWith('/api/') || url.pathname === '/sw.js') {
     return;
   }
 
-  // Stale-While-Revalidate for app assets (CSS, JS, SVG, HTML) with SPA query support
+  // Network-First with Cache Fallback so visitors ALWAYS see fresh UI/logo/CSS online
   event.respondWith(
-    caches.match(request, { ignoreSearch: request.mode === 'navigate' }).then((cachedResponse) => {
-      const fetchPromise = fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(async () => {
-          if (cachedResponse) return cachedResponse;
-          if (request.mode === 'navigate') {
-            return caches.match('/index.html');
-          }
-          return undefined;
-        });
-
-      return cachedResponse || fetchPromise;
-    })
+    fetch(request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+        }
+        return networkResponse;
+      })
+      .catch(async () => {
+        const cachedResponse = await caches.match(request, { ignoreSearch: request.mode === 'navigate' });
+        if (cachedResponse) return cachedResponse;
+        if (request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+        return undefined;
+      })
   );
 });

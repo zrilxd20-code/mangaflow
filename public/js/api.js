@@ -6,36 +6,84 @@ const Api = {
   baseUrl: '/api',
 
   token: null,
+  _cache: new Map(),
+  _inflight: new Map(),
 
   setToken(token) {
     this.token = token;
   },
 
-  async request(endpoint, options = {}) {
-    try {
-      const headers = {
-        'Content-Type': 'application/json',
-        ...(options.headers || {})
-      };
-
-      if (this.token) {
-        headers['Authorization'] = `Bearer ${this.token}`;
-      }
-
-      const res = await fetch(`${this.baseUrl}${endpoint}`, {
-        ...options,
-        headers
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(errorData.error || `HTTP ${res.status}`);
-      }
-      return await res.json();
-    } catch (err) {
-      console.error(`[API Error] ${endpoint}:`, err);
-      throw err;
+  _getCached(key) {
+    const entry = this._cache.get(key);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) {
+      this._cache.delete(key);
+      return null;
     }
+    return entry.data;
+  },
+
+  _setCached(key, data, ttlMs) {
+    if (!ttlMs || ttlMs <= 0) return;
+    if (this._cache.size > 120) {
+      const firstKey = this._cache.keys().next().value;
+      if (firstKey) this._cache.delete(firstKey);
+    }
+    this._cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  },
+
+  async request(endpoint, options = {}) {
+    const { cacheTtl = 0, ...fetchOptions } = options;
+    const isGet = !fetchOptions.method || fetchOptions.method.toUpperCase() === 'GET';
+    const cacheKey = isGet && cacheTtl > 0 ? endpoint : null;
+
+    if (cacheKey) {
+      const hit = this._getCached(cacheKey);
+      if (hit) return hit;
+      if (!fetchOptions.signal && this._inflight.has(cacheKey)) {
+        return this._inflight.get(cacheKey);
+      }
+    }
+
+    const exec = (async () => {
+      try {
+        const headers = {
+          'Content-Type': 'application/json',
+          ...(fetchOptions.headers || {})
+        };
+
+        if (this.token) {
+          headers['Authorization'] = `Bearer ${this.token}`;
+        }
+
+        const res = await fetch(`${this.baseUrl}${endpoint}`, {
+          ...fetchOptions,
+          headers
+        });
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(errorData.error || `HTTP ${res.status}`);
+        }
+        const json = await res.json();
+        if (cacheKey && json && json.success) {
+          this._setCached(cacheKey, json, cacheTtl);
+        }
+        return json;
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error(`[API Error] ${endpoint}:`, err);
+        }
+        throw err;
+      } finally {
+        if (cacheKey) this._inflight.delete(cacheKey);
+      }
+    })();
+
+    if (cacheKey && !fetchOptions.signal) {
+      this._inflight.set(cacheKey, exec);
+    }
+    return exec;
   },
 
   // ---------------- Authentication & Cloud Sync ----------------
@@ -112,16 +160,16 @@ const Api = {
 
   // 1. Trending
   async getTrending() {
-    return this.request('/trending');
+    return this.request('/trending', { cacheTtl: 5 * 60 * 1000 });
   },
 
   // 2. Latest Updates
   async getLatest(page = 1) {
-    return this.request(`/latest?page=${page}`);
+    return this.request(`/latest?page=${page}`, { cacheTtl: 3 * 60 * 1000 });
   },
 
   // 3. Search with filters
-  async search(params = {}) {
+  async search(params = {}, signal = null) {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q);
     if (params.tags) qs.set('tags', params.tags);
@@ -129,13 +177,16 @@ const Api = {
     if (params.sort) qs.set('sort', params.sort);
     if (params.lang) qs.set('lang', params.lang);
     if (params.page) qs.set('page', params.page);
+    if (params.limit) qs.set('limit', params.limit);
 
-    return this.request(`/search?${qs.toString()}`);
+    const opts = { cacheTtl: 2 * 60 * 1000 };
+    if (signal) opts.signal = signal;
+    return this.request(`/search?${qs.toString()}`, opts);
   },
 
   // 4. Tags
   async getTags() {
-    return this.request('/tags');
+    return this.request('/tags', { cacheTtl: 30 * 60 * 1000 });
   },
 
   // 5. Manga Details
@@ -143,7 +194,7 @@ const Api = {
     if (String(id).startsWith('pill-')) {
       return this.getMangaPillDetail(id);
     }
-    return this.request(`/manga/${id}`);
+    return this.request(`/manga/${id}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   // 6. Manga Chapters
@@ -156,7 +207,7 @@ const Api = {
       }
       return { success: true, data: chapters, total: chapters.length };
     }
-    return this.request(`/manga/${mangaId}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`);
+    return this.request(`/manga/${mangaId}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`, { cacheTtl: 3 * 60 * 1000 });
   },
 
   // 7. Chapter Pages
@@ -164,23 +215,25 @@ const Api = {
     if (String(chapterId).startsWith('pill-')) {
       return this.getMangaPillChapter(chapterId);
     }
-    return this.request(`/chapter/${chapterId}`);
+    return this.request(`/chapter/${chapterId}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   // ---------------- MangaPill (Complete Chapters Provider) ----------------
-  async searchMangaPill(q, page = 1) {
+  async searchMangaPill(q, page = 1, signal = null) {
     const pageParam = page > 1 ? `&page=${page}` : '';
-    return this.request(`/mangapill/search?q=${encodeURIComponent(q)}${pageParam}`);
+    const opts = { cacheTtl: 3 * 60 * 1000 };
+    if (signal) opts.signal = signal;
+    return this.request(`/mangapill/search?q=${encodeURIComponent(q)}${pageParam}`, opts);
   },
 
   async getMangaPillDetail(id, slug = '') {
     const cleanId = String(id).replace(/^pill-/, '');
-    return this.request(`/mangapill/manga/${cleanId}${slug ? '/' + slug : ''}`);
+    return this.request(`/mangapill/manga/${cleanId}${slug ? '/' + slug : ''}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   async getMangaPillChapter(chapterId, slug = '') {
     const cleanChId = String(chapterId).replace(/^pill-/, '');
-    return this.request(`/mangapill/chapter/${cleanChId}${slug ? '/' + slug : ''}`);
+    return this.request(`/mangapill/chapter/${cleanChId}${slug ? '/' + slug : ''}`, { cacheTtl: 10 * 60 * 1000 });
   },
 
   // ---------------- Image Resilience Helper ----------------
