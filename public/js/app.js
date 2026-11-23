@@ -33,6 +33,7 @@ const app = {
 
     Reader.init();
     this.bindGlobalEvents();
+    this.syncLangPrefUI();
     this.updateBadgeCounts();
     this.updateAuthUI();
     this.initPWA();
@@ -192,16 +193,42 @@ const app = {
         this.selectedStatus = chip.dataset.status || '';
       });
     });
+
+    // Global Escape key closes active non-reader modals
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || Reader.active) return;
+      const filterModal = document.getElementById('filter-modal');
+      if (filterModal && filterModal.style.display === 'flex') {
+        filterModal.style.display = 'none';
+        return;
+      }
+      const authModal = document.getElementById('auth-modal');
+      if (authModal && authModal.style.display === 'flex') {
+        this.toggleAuthModal(false);
+        return;
+      }
+      const iosModal = document.getElementById('ios-install-modal');
+      if (iosModal && iosModal.style.display === 'flex') {
+        this.toggleIosInstallModal(false);
+      }
+    });
   },
 
   initRouter() {
     window.addEventListener('hashchange', () => this.handleHashChange());
 
-    // Deep-linking via query parameter ?manga=<id>
+    // Deep-linking via query parameters (?manga=<id> or ?q=<query>)
     const searchParams = new URLSearchParams(window.location.search);
     const mangaId = searchParams.get('manga');
     if (mangaId) {
-      this.navigate('manga', { id: mangaId }, false);
+      const normalizedId = /^\d+$/.test(mangaId.trim()) ? `pill-${mangaId.trim()}` : mangaId.trim();
+      this.navigate('manga', { id: normalizedId }, false);
+      return;
+    }
+
+    const searchQuery = searchParams.get('q');
+    if (searchQuery && searchQuery.trim()) {
+      this.navigate('search', { q: searchQuery.trim() }, false);
       return;
     }
 
@@ -282,8 +309,12 @@ const app = {
       } else if (viewName === 'search') {
         const qParams = new URLSearchParams();
         if (params.q) qParams.set('q', params.q);
+        if (params.tags) qParams.set('tags', params.tags);
+        if (params.sort && params.sort !== 'relevance') qParams.set('sort', params.sort);
+        if (params.status) qParams.set('status', params.status);
         if (params.page && Number(params.page) > 1) qParams.set('page', params.page);
-        targetHash = `#/search?${qParams.toString()}`;
+        const qs = qParams.toString();
+        targetHash = qs ? `#/search?${qs}` : '#/search';
       } else if (viewName === 'home') {
         targetHash = '#/';
       }
@@ -336,13 +367,33 @@ const app = {
   async loadHeroAndTrending() {
     try {
       const res = await Api.getTrending();
-      if (!res.success || !res.data) return;
+      if (!res.success || !res.data) throw new Error('Data trending kosong');
 
       this.trendingData = res.data;
       this.renderHeroCarousel(res.data.slice(0, 5));
       this.renderTrendingGrid(res.data);
     } catch (err) {
       console.error('Failed to load trending:', err);
+      const hero = document.getElementById('hero-container');
+      const grid = document.getElementById('trending-grid');
+      if (hero) {
+        hero.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px;text-align:center;color:var(--text-muted);">
+            <i class="ri-wifi-off-line" style="font-size:2.4rem;color:var(--accent-primary);margin-bottom:10px;"></i>
+            <h3 style="color:var(--text-main);margin-bottom:6px;">Gagal Memuat Manga Populer</h3>
+            <p style="font-size:0.88rem;margin-bottom:16px;">Server sedang sibuk atau koneksi terganggu.</p>
+            <button type="button" class="btn btn-primary btn-sm" onclick="app.loadHeroAndTrending()"><i class="ri-refresh-line"></i> Coba Lagi</button>
+          </div>
+        `;
+      }
+      if (grid) {
+        grid.innerHTML = `
+          <div style="grid-column:1 / -1;text-align:center;padding:32px 0;color:var(--text-dim);">
+            <p style="margin-bottom:12px;">Tidak dapat memuat daftar trending saat ini.</p>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="app.loadHeroAndTrending()"><i class="ri-refresh-line"></i> Muat Ulang</button>
+          </div>
+        `;
+      }
     }
   },
 
@@ -380,11 +431,11 @@ const app = {
             <h1 class="hero-title">${this.escapeHtml(item.title)}</h1>
             <p class="hero-synopsis">${this.escapeHtml((item.description || '').replace(/\[\/?\w+\]/g, ''))}</p>
             <div class="hero-actions">
-              <button class="btn btn-primary" onclick="app.navigate('manga', { id: '${item.id}' })">
+              <button class="btn btn-primary" onclick="app.navigate('manga', { id: '${this.escapeHtml(item.id)}' })">
                 <i class="ri-book-read-line"></i> Mulai Baca
               </button>
-              <button class="btn btn-secondary" onclick="app.toggleBookmarkFromHero('${item.id}')">
-                <i class="ri-bookmark-line"></i> ${State.isBookmarked(item.id) ? 'Tersimpan' : 'Favorit'}
+              <button class="btn btn-secondary" data-hero-bookmark-id="${this.escapeHtml(item.id)}" onclick="app.toggleBookmarkFromHero('${this.escapeHtml(item.id)}')">
+                <i class="${State.isBookmarked(item.id) ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i> <span>${State.isBookmarked(item.id) ? 'Tersimpan' : 'Favorit'}</span>
               </button>
             </div>
           </div>
@@ -479,9 +530,10 @@ const app = {
   async loadLatestUpdates() {
     try {
       const res = await Api.getLatest(1);
-      if (!res.success || !res.data) return;
+      if (!res.success || !res.data) throw new Error('Data update terbaru kosong');
 
       const grid = document.getElementById('latest-grid');
+      if (!grid) return;
       grid.innerHTML = '';
 
       res.data.slice(0, 12).forEach((item) => {
@@ -490,10 +542,20 @@ const app = {
       });
     } catch (err) {
       console.error('Failed to load latest:', err);
+      const grid = document.getElementById('latest-grid');
+      if (grid) {
+        grid.innerHTML = `
+          <div style="grid-column:1 / -1;text-align:center;padding:32px 0;color:var(--text-dim);">
+            <p style="margin-bottom:12px;">Gagal memuat update terbaru.</p>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="app.loadLatestUpdates()"><i class="ri-refresh-line"></i> Muat Ulang</button>
+          </div>
+        `;
+      }
     }
   },
 
   async renderLatestView(page = 1) {
+    const safePage = Math.max(1, parseInt(page, 10) || 1);
     const view = document.getElementById('latest-view');
     view.style.display = 'block';
 
@@ -502,7 +564,7 @@ const app = {
         <div class="section-header">
           <div class="section-title-wrap">
             <i class="ri-sparkling-fill title-icon new"></i>
-            <h2>Semua Rilis & Update Terbaru (Hal. ${page})</h2>
+            <h2>Semua Rilis & Update Terbaru (Hal. ${safePage})</h2>
           </div>
         </div>
         <div class="manga-grid" id="latest-full-grid">
@@ -516,8 +578,9 @@ const app = {
     `;
 
     try {
-      const res = await Api.getLatest(page);
+      const res = await Api.getLatest(safePage);
       const grid = document.getElementById('latest-full-grid');
+      if (!grid) return;
       grid.innerHTML = '';
 
       if (res.data && res.data.length > 0) {
@@ -528,13 +591,33 @@ const app = {
 
         // Pagination buttons
         const pagination = document.getElementById('latest-pagination');
-        pagination.innerHTML = `
-          ${page > 1 ? `<button class="btn btn-secondary" onclick="app.renderLatestView(${page - 1})"><i class="ri-arrow-left-s-line"></i> Halaman Sebelumnya</button>` : ''}
-          <button class="btn btn-primary" onclick="app.renderLatestView(${page + 1})">Halaman Selanjutnya <i class="ri-arrow-right-s-line"></i></button>
+        if (pagination) {
+          pagination.innerHTML = `
+            ${safePage > 1 ? `<button class="btn btn-secondary" onclick="app.renderLatestView(${safePage - 1})"><i class="ri-arrow-left-s-line"></i> Halaman Sebelumnya</button>` : ''}
+            <button class="btn btn-primary" onclick="app.renderLatestView(${safePage + 1})">Halaman Selanjutnya <i class="ri-arrow-right-s-line"></i></button>
+          `;
+        }
+      } else {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 48px 0; color: var(--text-dim);">
+            <i class="ri-file-search-line" style="font-size: 2.5rem; display: block; margin-bottom: 10px;"></i>
+            <p>Belum ada rilis terbaru pada halaman ini.</p>
+          </div>
         `;
       }
     } catch (err) {
       console.error(err);
+      const grid = document.getElementById('latest-full-grid');
+      if (grid) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 48px 0; color: var(--text-muted);">
+            <i class="ri-error-warning-line" style="font-size: 2.8rem; color: var(--danger); display: block; margin-bottom: 10px;"></i>
+            <h3 style="color: var(--text-main); margin-bottom: 6px;">Gagal Memuat Update Terbaru</h3>
+            <p style="margin-bottom: 16px;">${this.escapeHtml(err.message || 'Server sedang sibuk.')}</p>
+            <button type="button" class="btn btn-primary btn-sm" onclick="app.renderLatestView(${safePage})"><i class="ri-refresh-line"></i> Coba Lagi</button>
+          </div>
+        `;
+      }
     }
   },
 
@@ -604,12 +687,19 @@ const app = {
         <img class="continue-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(thumbCover)}" alt="${this.escapeHtml(item.mangaTitle)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="continue-info">
           <div class="continue-title">${this.escapeHtml(item.mangaTitle)}</div>
-          <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${item.page}/${item.totalPages})</div>
-          <button class="btn btn-primary continue-btn" onclick="event.stopPropagation(); app.resumeReading('${item.mangaId}', '${item.chapterId}')">
+          <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${Number(item.page) || 1}/${Number(item.totalPages) || 1})</div>
+          <button type="button" class="btn btn-primary continue-btn">
             <i class="ri-play-fill"></i> Lanjut
           </button>
         </div>
       `;
+      const resumeBtn = card.querySelector('.continue-btn');
+      if (resumeBtn) {
+        resumeBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.resumeReading(item.mangaId, item.chapterId);
+        };
+      }
       container.appendChild(card);
     });
   },
@@ -740,15 +830,15 @@ const app = {
                     <i class="ri-book-open-line"></i> Baca Chapter Pertama
                   </button>
                   ${!isPill ? `
-                  <button class="btn btn-secondary" onclick="app.findCompleteSource('${encodeURIComponent(manga.title)}')">
+                  <button type="button" class="btn btn-secondary" id="detail-complete-source-btn">
                     <i class="ri-archive-line"></i> Buka di Server Komplit
                   </button>
                   ` : ''}
-                  <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${manga.id}')">
+                  <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${this.escapeHtml(manga.id)}')">
                     <i class="${isFav ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i>
                     <span>${isFav ? 'Tersimpan di Favorit' : 'Tambah ke Favorit'}</span>
                   </button>
-                  <button class="btn btn-secondary btn-like ${isLiked ? 'liked' : ''}" id="detail-like-btn" onclick="app.toggleLikeDetail('${manga.id}')">
+                  <button class="btn btn-secondary btn-like ${isLiked ? 'liked' : ''}" id="detail-like-btn" onclick="app.toggleLikeDetail('${this.escapeHtml(manga.id)}')">
                     <i class="${isLiked ? 'ri-heart-3-fill' : 'ri-heart-3-line'}"></i>
                     <span id="detail-like-label">${isLiked ? 'Disukai' : 'Suka'}</span>
                     <span class="like-counter-pill" id="detail-like-count">${likesCount}</span>
@@ -822,17 +912,23 @@ const app = {
         </div>
       `;
 
-      this.currentChaptersList = chapters;
+      this.currentChaptersList = [...chapters];
       this.filterChapters();
       this.renderCommentsList(manga.id, social.comments || []);
 
-      // Read first chapter button logic
+      // Bind Complete Source button programmatically so titles with apostrophes (e.g. JoJo's) never break JS
+      const completeSrcBtn = document.getElementById('detail-complete-source-btn');
+      if (completeSrcBtn) {
+        completeSrcBtn.onclick = () => this.findCompleteSource(manga.title);
+      }
+
+      // Read first chapter button logic (always picks earliest chapter regardless of current sort order)
       const firstBtn = document.getElementById('detail-read-first-btn');
       firstBtn.onclick = () => {
         const readable = chapters.filter((c) => !c.isExternal);
         if (readable.length > 0) {
-          // Chapter terawal adalah item terakhir jika diurutkan desc
-          const firstChapter = readable[readable.length - 1];
+          const sortedAsc = [...readable].sort((a, b) => (parseFloat(a.chapter) || 0) - (parseFloat(b.chapter) || 0));
+          const firstChapter = sortedAsc[0];
           Reader.open(manga, firstChapter.id, readable);
         } else if (chapters.length > 0 && chapters[0].externalUrl) {
           window.open(chapters[0].externalUrl, '_blank');
@@ -882,19 +978,24 @@ const app = {
         row.onclick = () => Reader.open(this.selectedManga, ch.id, internalChapters);
       }
 
+      const safeChapterNum = this.escapeHtml(ch.chapter || '0');
+      const safeChapterTitle = this.escapeHtml(ch.title ? ch.title : 'Chapter ' + (ch.chapter || '0'));
+      const safeGroup = this.escapeHtml(ch.group || (ch.source === 'mangapill' ? 'MangaPill Complete Archive' : 'Scanlation'));
+      const safeLang = this.escapeHtml(ch.language || '');
+
       row.innerHTML = `
         <div class="chapter-row-left">
-          <span class="chapter-badge">CH ${ch.chapter || '0'}</span>
+          <span class="chapter-badge">CH ${safeChapterNum}</span>
           <div>
-            <div class="chapter-row-title">${ch.title ? ch.title : 'Chapter ' + (ch.chapter || '0')}</div>
+            <div class="chapter-row-title">${safeChapterTitle}</div>
             <div class="chapter-row-group">
-              ${ch.group || (ch.source === 'mangapill' ? 'MangaPill Complete Archive' : 'Scanlation')}
+              ${safeGroup}
               ${ch.isExternal ? '<span style="color: #38bdf8; margin-left: 6px;">[Eksternal]</span>' : ''}
             </div>
           </div>
         </div>
         <div class="chapter-row-right">
-          <span style="font-weight: 700; text-transform: uppercase;">${ch.language}</span>
+          <span style="font-weight: 700; text-transform: uppercase;">${safeLang}</span>
           ${
             ch.isExternal
               ? '<i class="ri-external-link-line" title="Buka di situs resmi"></i>'
@@ -1102,8 +1203,8 @@ const app = {
           <img class="continue-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(thumbCover)}" alt="${this.escapeHtml(item.mangaTitle)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
           <div class="continue-info">
             <div class="continue-title" style="padding-right: 24px;">${this.escapeHtml(item.mangaTitle)}</div>
-            <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${item.page}/${item.totalPages})</div>
-            <button class="btn btn-primary continue-btn" onclick="event.stopPropagation(); app.resumeReading('${item.mangaId}', '${item.chapterId}')">
+            <div class="continue-sub">Chapter ${this.escapeHtml(String(item.chapterNum))} (Hal. ${Number(item.page) || 1}/${Number(item.totalPages) || 1})</div>
+            <button type="button" class="btn btn-primary continue-btn">
               <i class="ri-play-fill"></i> Lanjutkan
             </button>
           </div>
@@ -1111,11 +1212,24 @@ const app = {
             type="button"
             class="history-item-remove-btn"
             title="Hapus dari riwayat"
-            onclick="event.stopPropagation(); app.removeSingleHistory('${item.mangaId}')"
           >
             <i class="ri-close-line"></i>
           </button>
         `;
+        const resumeBtn = card.querySelector('.continue-btn');
+        if (resumeBtn) {
+          resumeBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.resumeReading(item.mangaId, item.chapterId);
+          };
+        }
+        const removeBtn = card.querySelector('.history-item-remove-btn');
+        if (removeBtn) {
+          removeBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.removeSingleHistory(item.mangaId);
+          };
+        }
         grid.appendChild(card);
       });
     }
@@ -1144,7 +1258,11 @@ const app = {
 
   findCompleteSource(mangaTitle) {
     this.activeSource = 'mangapill';
-    this.navigate('search', { q: decodeURIComponent(mangaTitle) });
+    let cleanTitle = String(mangaTitle || '');
+    try {
+      cleanTitle = decodeURIComponent(cleanTitle);
+    } catch (_) {}
+    this.navigate('search', { q: cleanTitle });
   },
 
   async performSearch(q) {
@@ -1154,6 +1272,17 @@ const app = {
   async renderSearchView(params = {}) {
     const view = document.getElementById('search-view');
     view.style.display = 'block';
+
+    // Sync filter state from URL hash params if present (supports genre pills, direct links & back/forward)
+    if (typeof params.tags === 'string') {
+      this.selectedFilterTags = new Set(params.tags.split(',').filter(Boolean));
+    }
+    if (typeof params.sort === 'string' && params.sort) {
+      this.selectedSort = params.sort;
+    }
+    if (typeof params.status === 'string') {
+      this.selectedStatus = params.status;
+    }
 
     const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
@@ -1263,11 +1392,18 @@ const app = {
           ? (res.data && res.data.length >= 20)
           : (page * 24 < (res.total || 0) || (res.data && res.data.length === 24));
 
+        const navBase = {
+          q: currentQ,
+          tags: Array.from(this.selectedFilterTags).join(','),
+          sort: this.selectedSort,
+          status: this.selectedStatus
+        };
+
         if (page > 1) {
           const prevBtn = document.createElement('button');
           prevBtn.className = 'btn btn-secondary';
           prevBtn.innerHTML = '<i class="ri-arrow-left-s-line"></i> Halaman Sebelumnya';
-          prevBtn.onclick = () => this.navigate('search', { q: currentQ, page: page - 1 });
+          prevBtn.onclick = () => this.navigate('search', { ...navBase, page: page - 1 });
           pagination.appendChild(prevBtn);
         }
 
@@ -1282,13 +1418,31 @@ const app = {
           const nextBtn = document.createElement('button');
           nextBtn.className = 'btn btn-primary';
           nextBtn.innerHTML = 'Halaman Selanjutnya <i class="ri-arrow-right-s-line"></i>';
-          nextBtn.onclick = () => this.navigate('search', { q: currentQ, page: page + 1 });
+          nextBtn.onclick = () => this.navigate('search', { ...navBase, page: page + 1 });
           pagination.appendChild(nextBtn);
         }
       }
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error(err);
+      const grid = document.getElementById('search-results-grid');
+      if (grid) {
+        grid.innerHTML = `
+          <div style="grid-column: 1 / -1; text-align: center; padding: 52px 0; color: var(--text-muted);">
+            <i class="ri-error-warning-line" style="font-size: 2.8rem; color: var(--danger); display: block; margin-bottom: 10px;"></i>
+            <h3 style="color: var(--text-main); margin-bottom: 6px;">Gagal Memuat Hasil Pencarian</h3>
+            <p style="margin-bottom: 16px;">${this.escapeHtml(err.message || 'Server sedang sibuk atau koneksi terganggu.')}</p>
+            <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-primary btn-sm" id="search-retry-btn"><i class="ri-refresh-line"></i> Coba Lagi</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.switchSource('${isPill ? 'mangadex' : 'mangapill'}')">
+                Ganti ke ${isPill ? 'Server 1 (MangaDex)' : 'Server 2 (MangaPill)'}
+              </button>
+            </div>
+          </div>
+        `;
+        const retryBtn = document.getElementById('search-retry-btn');
+        if (retryBtn) retryBtn.onclick = () => this.renderSearchView(params);
+      }
     }
   },
 
@@ -1326,6 +1480,28 @@ const app = {
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Quick search error:', err);
+      if (dropdown) {
+        const isPill = this.activeSource === 'mangapill';
+        dropdown.innerHTML = `
+          <div style="padding:14px 12px;text-align:center;color:var(--text-muted);font-size:0.84rem;">
+            <div style="margin-bottom:8px;color:#fca5a5;"><i class="ri-error-warning-line"></i> Pencarian gagal dimuat.</div>
+            <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn btn-sm btn-primary" style="padding:4px 10px;font-size:0.76rem;" id="qs-retry-btn">Coba Lagi</button>
+              <button type="button" class="btn btn-sm btn-secondary" style="padding:4px 10px;font-size:0.76rem;" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
+                Coba ${isPill ? 'Server 1' : 'Server 2'}
+              </button>
+            </div>
+          </div>
+        `;
+        const retryBtn = dropdown.querySelector('#qs-retry-btn');
+        if (retryBtn) {
+          retryBtn.onclick = (e) => {
+            e.stopPropagation();
+            this.executeQuickSearch(q, targetId);
+          };
+        }
+        dropdown.classList.add('open');
+      }
     }
   },
 
@@ -1530,6 +1706,15 @@ const app = {
 
           const found = this.filterTags.find((t) => t.name.toLowerCase() === g.toLowerCase());
           if (found) {
+            if (this.activeSource !== 'mangadex') {
+              this.activeSource = 'mangadex';
+              const label = document.getElementById('current-server-label');
+              if (label) label.textContent = 'MangaDex';
+              document.getElementById('server-opt-mangadex')?.classList.add('active');
+              document.getElementById('server-opt-mangapill')?.classList.remove('active');
+              document.getElementById('mob-srv-mangadex')?.classList.add('active');
+              document.getElementById('mob-srv-mangapill')?.classList.remove('active');
+            }
             this.selectedFilterTags.clear();
             this.selectedFilterTags.add(found.id);
             this.navigate('search', { tags: found.id });
@@ -1587,10 +1772,16 @@ const app = {
     const mobInput = document.getElementById('mobile-search-input');
     const globalInput = document.getElementById('global-search-input');
     const q = (pageInput?.value || mobInput?.value || globalInput?.value || '').trim();
+    const filterParams = {
+      q,
+      tags: Array.from(this.selectedFilterTags).join(','),
+      sort: this.selectedSort,
+      status: this.selectedStatus
+    };
     if (this.currentView === 'search') {
-      this.renderSearchView({ q });
+      this.renderSearchView(filterParams);
     } else {
-      this.navigate('search', { q });
+      this.navigate('search', filterParams);
     }
   },
 
@@ -1617,6 +1808,13 @@ const app = {
 
     const added = State.toggleBookmark(item);
     this.updateBadgeCounts();
+
+    document.querySelectorAll('[data-hero-bookmark-id]').forEach((btn) => {
+      if (btn.getAttribute('data-hero-bookmark-id') === mangaId) {
+        btn.innerHTML = `<i class="${added ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i> <span>${added ? 'Tersimpan' : 'Favorit'}</span>`;
+      }
+    });
+
     this.showToast(added ? 'Disimpan ke Favorit' : 'Dihapus dari Favorit');
   },
 
@@ -1666,6 +1864,19 @@ const app = {
     menu.classList.toggle('open');
   },
 
+  syncLangPrefUI() {
+    const langs = Array.isArray(State.settings.languages) && State.settings.languages.length > 0
+      ? State.settings.languages
+      : ['en', 'id'];
+    document.querySelectorAll('#lang-dropdown-menu input[type="checkbox"]').forEach((cb) => {
+      cb.checked = langs.includes(cb.value);
+    });
+    const label = document.getElementById('current-lang-label');
+    if (label) {
+      label.textContent = langs.map((l) => l.toUpperCase()).join(' / ');
+    }
+  },
+
   updateLangPref() {
     const checkboxes = document.querySelectorAll('#lang-dropdown-menu input[type="checkbox"]');
     const langs = [];
@@ -1673,12 +1884,13 @@ const app = {
       if (cb.checked) langs.push(cb.value);
     });
 
-    if (!langs.length) langs.push('en');
+    if (!langs.length) {
+      langs.push('en');
+    }
 
     State.settings.languages = langs;
     State.saveSettings();
-
-    document.getElementById('current-lang-label').textContent = langs.map((l) => l.toUpperCase()).join(' / ');
+    this.syncLangPrefUI();
     this.showToast('Preferensi bahasa chapter diperbarui');
 
     // Reload chapters if on detail view
@@ -2049,16 +2261,20 @@ const app = {
         const safeText = this.escapeHtml(c.text || '');
         const fallbackAvatar = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="%236366f1"/><text x="50%" y="54%" font-family="sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle" dominant-baseline="middle">${safeName.charAt(0).toUpperCase()}</text></svg>`;
 
+        const safeAvatar = (typeof c.avatar === 'string' && /^(data:image\/svg\+xml|https:\/\/)/i.test(c.avatar))
+          ? this.escapeHtml(c.avatar)
+          : fallbackAvatar;
+
         return `
           <div class="comment-card">
-            <img class="comment-avatar" src="${c.avatar || fallbackAvatar}" alt="${safeName}" />
+            <img class="comment-avatar" src="${safeAvatar}" alt="${safeName}" />
             <div class="comment-body">
               <div class="comment-header">
                 <span class="comment-author">${safeName}</span>
                 <span class="comment-time">${this.formatRelativeTime(c.createdAt)}</span>
                 ${
                   isOwn
-                    ? `<button type="button" class="comment-delete-btn" onclick="app.deleteMangaComment('${mangaId}', '${c.id}')" title="Hapus komentar saya">
+                    ? `<button type="button" class="comment-delete-btn" onclick="app.deleteMangaComment('${this.escapeHtml(mangaId)}', '${this.escapeHtml(c.id)}')" title="Hapus komentar saya">
                          <i class="ri-delete-bin-line"></i>
                        </button>`
                     : ''
@@ -2216,9 +2432,19 @@ const app = {
 
   showToast(message) {
     const container = document.getElementById('toast-container');
+    if (!container) return;
     const toast = document.createElement('div');
     toast.className = 'toast';
-    toast.innerHTML = `<i class="ri-checkbox-circle-fill" style="color: var(--accent-primary);"></i> <span>${message}</span>`;
+
+    const icon = document.createElement('i');
+    icon.className = 'ri-checkbox-circle-fill';
+    icon.style.color = 'var(--accent-primary)';
+
+    const textSpan = document.createElement('span');
+    textSpan.textContent = String(message ?? '');
+
+    toast.appendChild(icon);
+    toast.appendChild(textSpan);
     container.appendChild(toast);
 
     setTimeout(() => {

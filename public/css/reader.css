@@ -497,15 +497,8 @@
   to { transform: rotate(360deg); }
 }
 
-/* RTL (Right to Left) vs LTR indicators */
-.reader-single-view.direction-rtl .single-nav-btn.prev {
-  right: 0;
-  left: auto;
-}
-.reader-single-view.direction-rtl .single-nav-btn.next {
-  left: 0;
-  right: auto;
-}
+/* RTL & LTR keep left button (<) on left edge and right button (>) on right edge;
+   click semantics flip in Reader.onNavBtnClick() so icons & edges never double-invert. */
 
 /* Preload badge */
 .reader-preload-pill {

@@ -63,7 +63,9 @@ const Api = {
 
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(errorData.error || `HTTP ${res.status}`);
+          const apiErr = new Error(errorData.error || `HTTP ${res.status}`);
+          apiErr.status = res.status;
+          throw apiErr;
         }
         const json = await res.json();
         if (cacheKey && json && json.success) {
@@ -191,15 +193,15 @@ const Api = {
 
   // 5. Manga Details
   async getManga(id) {
-    if (String(id).startsWith('pill-')) {
+    if (String(id).startsWith('pill-') || /^\d+$/.test(String(id))) {
       return this.getMangaPillDetail(id);
     }
-    return this.request(`/manga/${id}`, { cacheTtl: 5 * 60 * 1000 });
+    return this.request(`/manga/${encodeURIComponent(id)}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   // 6. Manga Chapters
   async getChapters(mangaId, lang = 'en,id', order = 'desc') {
-    if (String(mangaId).startsWith('pill-')) {
+    if (String(mangaId).startsWith('pill-') || /^\d+$/.test(String(mangaId))) {
       const res = await this.getMangaPillDetail(mangaId);
       let chapters = res.data?.chapters || [];
       if (order === 'asc') {
@@ -207,7 +209,7 @@ const Api = {
       }
       return { success: true, data: chapters, total: chapters.length };
     }
-    return this.request(`/manga/${mangaId}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`, { cacheTtl: 3 * 60 * 1000 });
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`, { cacheTtl: 3 * 60 * 1000 });
   },
 
   // 7. Chapter Pages
@@ -241,31 +243,44 @@ const Api = {
   setupImageResilience(imgElement, pageData) {
     if (!imgElement || !pageData) return;
 
-    let step = 0; // 0: direct, 1: proxy, 2: direct data-saver, 3: proxy data-saver
+    // Deduplicate candidate failover URLs so identical proxy URLs (e.g. MangaPill) aren't retried redundantly
+    const candidates = Array.from(
+      new Set([
+        pageData.proxyUrl,
+        pageData.dataSaverUrl,
+        pageData.proxyDataSaverUrl
+      ].filter(Boolean))
+    );
+    let step = 0;
 
-    imgElement.onerror = () => {
-      step++;
-      console.warn(`[Image Failover Step ${step}] Retrying page ${pageData.page}`);
+    const handleError = () => {
+      const currentSrc = imgElement.getAttribute('src') || '';
+      while (step < candidates.length && candidates[step] === currentSrc) {
+        step++;
+      }
 
-      if (step === 1) {
-        // Retry through backend image proxy
-        imgElement.src = pageData.proxyUrl;
-      } else if (step === 2 && pageData.dataSaverUrl) {
-        // Retry with direct dataSaver URL
-        imgElement.src = pageData.dataSaverUrl;
-      } else if (step === 3 && pageData.proxyDataSaverUrl) {
-        // Retry with proxy dataSaver URL
-        imgElement.src = pageData.proxyDataSaverUrl;
+      if (step < candidates.length) {
+        const nextUrl = candidates[step++];
+        console.warn(`[Image Failover Step ${step}] Retrying page ${pageData.page}`);
+        imgElement.src = nextUrl;
       } else {
-        // Complete failure fallback: sleek dark placeholder
+        // Complete failure fallback: sleek dark placeholder with working re-armed retry
         imgElement.onerror = null;
         imgElement.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1200" viewBox="0 0 800 1200"><rect fill="%2311141c" width="800" height="1200"/><text fill="%23818cf8" font-family="sans-serif" font-size="28" x="50%" y="48%" text-anchor="middle">Halaman ' + pageData.page + ' Tidak Tersedia</text><text fill="%2364748b" font-family="sans-serif" font-size="18" x="50%" y="52%" text-anchor="middle">Klik untuk memuat ulang</text></svg>';
         imgElement.style.cursor = 'pointer';
-        imgElement.onclick = () => {
+        imgElement.onclick = (e) => {
+          e.stopPropagation();
           step = 0;
-          imgElement.src = pageData.proxyUrl + '&t=' + Date.now();
+          imgElement.style.cursor = '';
+          imgElement.onclick = null;
+          imgElement.onerror = handleError;
+          const retryBase = pageData.proxyUrl || pageData.directUrl;
+          const sep = retryBase.includes('?') ? '&' : '?';
+          imgElement.src = `${retryBase}${sep}t=${Date.now()}`;
         };
       }
     };
+
+    imgElement.onerror = handleError;
   }
 };

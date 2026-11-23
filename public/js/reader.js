@@ -29,6 +29,7 @@ const Reader = {
   hudVisible: true,
   preloadedSet: new Set(),
   preloadHideTimeout: null,
+  loadRequestId: 0,
 
   // DOM Elements
   elements: {},
@@ -118,6 +119,9 @@ const Reader = {
     // Mode Toggle (Webtoon <-> Single)
     this.elements.modeToggle.onclick = () => {
       this.mode = this.mode === 'webtoon' ? 'single' : 'webtoon';
+      if (this.mode !== 'webtoon') {
+        this.stopAutoScroll();
+      }
       State.settings.readerMode = this.mode;
       State.saveSettings();
       this.updateControlsUI();
@@ -259,8 +263,15 @@ const Reader = {
       this.loadChapter(this.currentChapterId);
     };
 
-    // Fullscreen
+    // Fullscreen & native Escape sync
     this.elements.fullscreenBtn.onclick = () => this.toggleFullscreen();
+    document.addEventListener('fullscreenchange', () => {
+      if (this.elements.fullscreenBtn) {
+        this.elements.fullscreenBtn.innerHTML = document.fullscreenElement
+          ? '<i class="ri-fullscreen-exit-line"></i>'
+          : '<i class="ri-fullscreen-line"></i>';
+      }
+    });
 
     // HUD Auto-hide on Workspace Click/Tap
     this.elements.workspace.onclick = (e) => {
@@ -326,6 +337,15 @@ const Reader = {
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
       if (!this.active) return;
+
+      // Never hijack browser modifier combos (Ctrl+R, Ctrl+F, Ctrl+S, Cmd+...)
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Ignore letter/navigation shortcuts while interacting with form fields (except Escape)
+      const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && e.key !== 'Escape') {
+        return;
+      }
 
       // Close modal first if open
       if (this.elements.shortcutsModal && this.elements.shortcutsModal.style.display === 'flex') {
@@ -477,6 +497,16 @@ const Reader = {
 
     if (this.elements.singleView) {
       this.elements.singleView.className = `reader-single-view direction-${this.direction} fit-${this.fitMode}`;
+    }
+
+    if (this.elements.singlePrevBtn && this.elements.singleNextBtn) {
+      if (this.direction === 'rtl') {
+        this.elements.singlePrevBtn.title = 'Halaman Selanjutnya (RTL - Panah Kiri / A)';
+        this.elements.singleNextBtn.title = 'Halaman Sebelumnya (RTL - Panah Kanan / D)';
+      } else {
+        this.elements.singlePrevBtn.title = 'Halaman Sebelumnya (LTR - Panah Kiri / A)';
+        this.elements.singleNextBtn.title = 'Halaman Selanjutnya (LTR - Panah Kanan / D / Spasi)';
+      }
     }
   },
 
@@ -771,7 +801,16 @@ const Reader = {
     this.active = true;
     this.manga = manga;
     this.currentChapterId = chapterId;
-    this.allChapters = allChapters;
+    // Normalize chapter list to descending order (newest first) so Next/Prev chapter never flips
+    // regardless of how the user sorted chapters on the detail page
+    this.allChapters = [...(allChapters || [])].sort((a, b) => {
+      const numA = parseFloat(a.chapter);
+      const numB = parseFloat(b.chapter);
+      if (!Number.isNaN(numA) && !Number.isNaN(numB) && numA !== numB) {
+        return numB - numA;
+      }
+      return 0;
+    });
     this.currentPage = 1;
     const historyEntry = typeof State !== 'undefined' && State.getHistory
       ? State.getHistory().find((h) => h.mangaId === manga?.id && h.chapterId === chapterId)
@@ -811,6 +850,8 @@ const Reader = {
   },
 
   async loadChapter(chapterId) {
+    const reqId = ++this.loadRequestId;
+    this.stopAutoScroll();
     this.currentChapterId = chapterId;
     this.elements.chapterSelect.value = chapterId;
 
@@ -830,6 +871,7 @@ const Reader = {
 
     try {
       const res = await Api.getChapterPages(chapterId);
+      if (reqId !== this.loadRequestId || !this.active) return;
       if (!res.success || !res.data || !res.data.pages || res.data.pages.length === 0) {
         throw new Error('Chapter tidak memiliki halaman gambar atau server MangaDex sedang limit.');
       }
@@ -883,6 +925,7 @@ const Reader = {
         }
       }
     } catch (err) {
+      if (reqId !== this.loadRequestId || !this.active) return;
       console.error('Failed to load chapter pages:', err);
       this.elements.loader.style.display = 'none';
       this.elements.error.style.display = 'flex';
@@ -937,6 +980,13 @@ const Reader = {
 
     if (this.currentPage <= 1) {
       this.elements.workspace.scrollTop = 0;
+    } else {
+      requestAnimationFrame(() => {
+        const targetWrap = strip.querySelector(`[data-page="${this.currentPage}"]`);
+        if (targetWrap) {
+          targetWrap.scrollIntoView({ behavior: 'auto', block: 'start' });
+        }
+      });
     }
   },
 

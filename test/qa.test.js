@@ -549,6 +549,20 @@ async function runComprehensiveQA() {
       styleCss.includes('progress.loading-spinner:indeterminate')
     );
 
+    // 9.10 Deep Bugfix Regression Suite (RTL Single-Page, XSS Toast, Apostrophe Titles, Reader Race Guard, Edge Headers)
+    assertTest(
+      'Perbaikan Bug Mendalam Aktif (RTL Reader, Anti-XSS Toast, Title Apostrof, Race Guard & Edge Cache Proxy)',
+      (rHome.headers.get('permissions-policy') || '').includes('camera=()') &&
+      (rHome.headers.get('cross-origin-opener-policy') || '') === 'same-origin-allow-popups' &&
+      (rDexCover.headers.get('cache-control') || '').includes('s-maxage=86400') &&
+      !readerCss.includes('.reader-single-view.direction-rtl .single-nav-btn.prev') &&
+      readerJsContent.includes('loadRequestId') &&
+      readerJsContent.includes('if (e.ctrlKey || e.metaKey || e.altKey) return') &&
+      appJsContent.includes('detail-complete-source-btn') &&
+      appJsContent.includes('textSpan.textContent = String(message') &&
+      appJsContent.includes('syncLangPrefUI()')
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {

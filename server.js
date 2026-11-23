@@ -85,6 +85,8 @@ app.use((req, res, next) => {
   res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(), focus-without-user-activation=()');
   next();
 });
 
@@ -257,7 +259,8 @@ class AuthRateLimiter {
     this.message = message;
     this.hits = new Map();
     // Periodically prune expired entries
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    const cleanupTimer = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    if (cleanupTimer.unref) cleanupTimer.unref();
   }
 
   cleanup() {
@@ -459,7 +462,8 @@ function formatManga(item) {
 // ----------------------------------------------------
 
 // Middleware: Require Authenticated User
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
+  await db.ensureReady();
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   const user = db.getUserByToken(token);
@@ -474,6 +478,7 @@ function requireAuth(req, res, next) {
 // 0.1 Register with Brute-Force Rate Limiting
 app.post('/api/auth/register', registerLimiter.middleware(), async (req, res) => {
   try {
+    await db.ensureReady();
     const { username, email, password } = req.body || {};
     const result = await db.createUser(username, email, password);
     res.status(201).json({ success: true, ...result });
@@ -485,6 +490,7 @@ app.post('/api/auth/register', registerLimiter.middleware(), async (req, res) =>
 // 0.2 Login with Brute-Force Rate Limiting
 app.post('/api/auth/login', loginLimiter.middleware(), async (req, res) => {
   try {
+    await db.ensureReady();
     const { identifier, password } = req.body || {};
     if (!identifier || !password) {
       return res.status(400).json({ success: false, error: 'Username/email dan kata sandi wajib diisi.' });
@@ -568,8 +574,9 @@ function getOptionalUser(req) {
 }
 
 // Get social stats & comments for a manga
-app.get('/api/manga/:id/social', (req, res) => {
+app.get('/api/manga/:id/social', async (req, res) => {
   try {
+    await db.ensureReady();
     const { id } = req.params;
     const user = getOptionalUser(req);
     const data = db.getMangaSocial(id, user ? user.id : null);
@@ -890,11 +897,17 @@ app.get('/api/chapter/:id', async (req, res) => {
   const { id } = req.params;
   const cacheKey = `chapter_pages_${id}`;
   const cached = cache.get(cacheKey);
-  if (cached) return res.json({ success: true, data: cached, source: 'cache' });
+  if (cached) {
+    setEdgeCache(res, 60, 300, 600);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
 
   try {
-    // Get chapter metadata first
-    const metaRes = await resilientFetch(`${MANGADEX_API}/chapter/${id}?includes[]=manga`);
+    // Fetch chapter metadata and @Home image server in parallel to halve chapter load latency
+    const [metaRes, atHomeRes] = await Promise.all([
+      resilientFetch(`${MANGADEX_API}/chapter/${id}?includes[]=manga`),
+      resilientFetch(`${MANGADEX_API}/at-home/server/${id}?forcePort443=true`).catch(() => null)
+    ]);
     const chapterMeta = metaRes.data?.attributes || {};
     const mangaRel = (metaRes.data?.relationships || []).find((r) => r.type === 'manga');
     const mangaId = mangaRel?.id;
@@ -907,12 +920,11 @@ app.get('/api/chapter/:id', async (req, res) => {
       });
     }
 
-    // Get MangaDex @ Home Server
-    const atHomeRes = await resilientFetch(`${MANGADEX_API}/at-home/server/${id}?forcePort443=true`);
-    const baseUrl = atHomeRes.baseUrl;
-    const hash = atHomeRes.chapter?.hash;
-    const pageFiles = atHomeRes.chapter?.data || [];
-    const dataSaverFiles = atHomeRes.chapter?.dataSaver || [];
+    const atHomeData = atHomeRes || await resilientFetch(`${MANGADEX_API}/at-home/server/${id}?forcePort443=true`);
+    const baseUrl = atHomeData.baseUrl;
+    const hash = atHomeData.chapter?.hash;
+    const pageFiles = atHomeData.chapter?.data || [];
+    const dataSaverFiles = atHomeData.chapter?.dataSaver || [];
 
     if (!pageFiles || pageFiles.length === 0) {
       return res.status(404).json({
@@ -948,8 +960,9 @@ app.get('/api/chapter/:id', async (req, res) => {
       totalPages: pages.length
     };
 
-    // MangaDex @ Home tokens last ~15-20 min, cache for 12 min
+    // MangaDex @ Home tokens last ~15-20 min, cache for 12 min in memory & 5 min on edge
     cache.set(cacheKey, payload, 720);
+    setEdgeCache(res, 60, 300, 600);
     res.json({ success: true, data: payload, source: 'api' });
   } catch (err) {
     console.error('Chapter pages error:', err.message);
@@ -1012,12 +1025,14 @@ app.get(['/api/mangapill/chapter/:chapterId', '/api/mangapill/chapter/:chapterId
   const cacheKey = `pill:chapter:${cleanChId}`;
   const cached = cache.get(cacheKey);
   if (cached) {
+    setEdgeCache(res, 300, 1800, 3600);
     return res.json({ success: true, data: cached, source: 'cache' });
   }
 
   try {
     const result = await mangapill.getMangaPillChapter(cleanChId, slug || '');
     cache.set(cacheKey, result.data, 1800); // 30 mins cache
+    setEdgeCache(res, 300, 1800, 3600);
     res.json(result);
   } catch (err) {
     console.error('MangaPill chapter error:', err.message);
@@ -1097,11 +1112,17 @@ app.get('/api/proxy/image', async (req, res) => {
           'User-Agent': USER_AGENT
         };
 
-    let response = await fetch(imageUrl, { headers: proxyHeaders });
+    let response = await fetch(imageUrl, {
+      headers: proxyHeaders,
+      signal: AbortSignal.timeout(10000)
+    });
 
     if (!response.ok && hostname === 'uploads.mangadex.org' && /\.(256|512)\.jpg$/i.test(parsed.pathname)) {
       const fullResUrl = imageUrl.replace(/\.(256|512)\.jpg$/i, '');
-      response = await fetch(fullResUrl, { headers: proxyHeaders });
+      response = await fetch(fullResUrl, {
+        headers: proxyHeaders,
+        signal: AbortSignal.timeout(10000)
+      });
     }
 
     if (!response.ok) {
@@ -1111,7 +1132,7 @@ app.get('/api/proxy/image', async (req, res) => {
 
     const contentType = response.headers.get('content-type') || 'image/jpeg';
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 
     // 4. Memory-safe streaming directly to client
     if (response.body) {
@@ -1140,7 +1161,7 @@ if (require.main === module) {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`=================================================`);
     console.log(`🚀 MangaFlow Online Server is running on port ${PORT}`);
-    console.log(`📡 Rate limiter: Token-bucket active (max 4 req/s)`);
+    console.log(`📡 Rate limiter: Non-blocking token-bucket active (max 8 req/s)`);
     console.log(`🛡️ Resilience layer & TTL In-Memory Cache active`);
     console.log(`🖼️ Image proxy & Data-saver fallback ready`);
     console.log(`🌐 Open http://localhost:${PORT}`);

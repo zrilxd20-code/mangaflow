@@ -75,6 +75,18 @@ const State = {
             }
           } catch (err) {
             console.warn('[Auth Check] Sesi berakhir:', err.message);
+            if (err && err.status === 401) {
+              this.user = null;
+              this.token = null;
+              if (typeof Api !== 'undefined') Api.setToken(null);
+              try {
+                localStorage.removeItem(this.AUTH_TOKEN_KEY);
+                localStorage.removeItem(this.AUTH_USER_KEY);
+              } catch (_) {}
+              if (typeof app !== 'undefined' && app.updateAuthUI) {
+                app.updateAuthUI();
+              }
+            }
           }
         }, 100);
       }

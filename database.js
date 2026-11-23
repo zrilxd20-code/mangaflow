@@ -122,6 +122,16 @@ class Database {
     }
   }
 
+  async ensureReady() {
+    if (this.cloudSyncPromise) {
+      try {
+        await this.cloudSyncPromise;
+      } finally {
+        this.cloudSyncPromise = null;
+      }
+    }
+  }
+
   hasCloudConfig() {
     return Boolean(CLOUD_KV_URL && CLOUD_KV_TOKEN);
   }

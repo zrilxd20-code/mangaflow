@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.7" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.7" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.8" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.8" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=1.0.7" />
-  <link rel="stylesheet" href="./css/reader.css?v=1.0.7" />
+  <link rel="stylesheet" href="./css/style.css?v=1.0.8" />
+  <link rel="stylesheet" href="./css/reader.css?v=1.0.8" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -759,7 +759,7 @@
   </div>
 
   <!-- Keyboard Shortcuts Help Modal -->
-  <div class="shortcut-modal-backdrop" id="shortcut-modal" style="display: none;">
+  <div class="shortcut-modal-backdrop" id="shortcut-modal" style="display: none;" onclick="if(event.target === this) Reader.toggleShortcutsModal(false)">
     <div class="shortcut-modal-box">
       <div class="shortcut-modal-header">
         <div class="shortcut-modal-title">
@@ -840,7 +840,7 @@
   </div>
 
   <!-- Advanced Search & Filter Modal -->
-  <div class="modal-backdrop" id="filter-modal" style="display: none;">
+  <div class="modal-backdrop" id="filter-modal" style="display: none;" onclick="if(event.target === this) app.toggleFilterModal()">
     <div class="modal-box">
       <div class="modal-header">
         <div class="modal-title">
@@ -886,7 +886,7 @@
   </div>
 
   <!-- Authentication Modal (Login / Register) -->
-  <div class="modal-backdrop" id="auth-modal" style="display: none;">
+  <div class="modal-backdrop" id="auth-modal" style="display: none;" onclick="if(event.target === this) app.toggleAuthModal(false)">
     <div class="modal-box auth-modal-box">
       <div class="modal-header">
         <div class="modal-title">
@@ -1044,10 +1044,10 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=1.0.7"></script>
-  <script src="./js/api.js?v=1.0.7"></script>
-  <script src="./js/reader.js?v=1.0.7"></script>
-  <script src="./js/app.js?v=1.0.7"></script>
+  <script src="./js/state.js?v=1.0.8"></script>
+  <script src="./js/api.js?v=1.0.8"></script>
+  <script src="./js/reader.js?v=1.0.8"></script>
+  <script src="./js/app.js?v=1.0.8"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
