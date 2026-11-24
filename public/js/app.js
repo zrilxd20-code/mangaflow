@@ -33,6 +33,7 @@ const app = {
 
     Reader.init();
     this.bindGlobalEvents();
+    this.initScrollTopButton();
     this.syncLangPrefUI();
     this.updateBadgeCounts();
     this.updateAuthUI();
@@ -94,13 +95,19 @@ const app = {
     const clearBtn = document.getElementById('search-clear-btn');
 
     if (searchInput) {
+      searchInput.addEventListener('focus', () => {
+        if (!searchInput.value.trim()) {
+          this.renderRecentSearchSuggestions('quick-search-results');
+        }
+      });
+
       searchInput.addEventListener('input', (e) => {
         const q = e.target.value.trim();
         if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
 
         clearTimeout(this.searchTimeout);
         if (!q) {
-          if (searchDropdown) searchDropdown.classList.remove('open');
+          this.renderRecentSearchSuggestions('quick-search-results');
           return;
         }
 
@@ -126,13 +133,19 @@ const app = {
     const mobClearBtn = document.getElementById('mobile-search-clear-btn');
 
     if (mobSearchInput) {
+      mobSearchInput.addEventListener('focus', () => {
+        if (!mobSearchInput.value.trim()) {
+          this.renderRecentSearchSuggestions('mobile-quick-search-results');
+        }
+      });
+
       mobSearchInput.addEventListener('input', (e) => {
         const q = e.target.value.trim();
         if (mobClearBtn) mobClearBtn.style.display = q ? 'block' : 'none';
 
         clearTimeout(this.searchTimeout);
         if (!q) {
-          if (mobSearchDropdown) mobSearchDropdown.classList.remove('open');
+          this.renderRecentSearchSuggestions('mobile-quick-search-results');
           return;
         }
 
@@ -194,9 +207,25 @@ const app = {
       });
     });
 
-    // Global Escape key closes active non-reader modals
+    // Global keyboard shortcuts: Escape closes active modals; '/' focuses search
     document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || Reader.active) return;
+      if (Reader.active) return;
+
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toUpperCase() : '';
+        if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !e.target?.isContentEditable) {
+          e.preventDefault();
+          if (window.innerWidth <= 768) {
+            this.toggleMobileSearch(true);
+          } else {
+            const globalInput = document.getElementById('global-search-input');
+            if (globalInput) globalInput.focus();
+          }
+          return;
+        }
+      }
+
+      if (e.key !== 'Escape') return;
       const filterModal = document.getElementById('filter-modal');
       if (filterModal && filterModal.style.display === 'flex') {
         filterModal.style.display = 'none';
@@ -212,6 +241,52 @@ const app = {
         this.toggleIosInstallModal(false);
       }
     });
+  },
+
+  initScrollTopButton() {
+    const btn = document.getElementById('scroll-top-btn');
+    const sentinel = document.getElementById('scroll-top-sentinel');
+    const viewport = document.getElementById('app-viewport');
+    if (!btn) return;
+
+    // Fallback for browsers without CSS container scroll-state queries (Firefox / Safari)
+    const supportsScrollState = typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('container-type', 'scroll-state');
+    if (!supportsScrollState && sentinel && 'IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          document.documentElement.classList.toggle('scrolled', !entry.isIntersecting);
+        });
+      });
+      observer.observe(sentinel);
+    }
+
+    // Focus guard: if button hides while focused (e.g. PageUp/Home), move focus cleanly to main viewport
+    btn.addEventListener('focusout', (e) => {
+      if (!e.relatedTarget && getComputedStyle(btn).visibility === 'hidden' && viewport) {
+        viewport.focus({ preventScroll: true });
+      }
+    });
+  },
+
+  scrollToTop() {
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+  },
+
+  syncDocumentTitle(customTitle = '') {
+    const defaultTitle = 'MangaFlow - Baca Manga Online Modern & Minimalis';
+    if (customTitle) {
+      document.title = `${customTitle} | MangaFlow`;
+      return;
+    }
+    const map = {
+      home: defaultTitle,
+      latest: 'Update Manga Terbaru | MangaFlow',
+      library: 'Koleksi Favorit | MangaFlow',
+      history: 'Riwayat Membaca | MangaFlow',
+      search: 'Jelajahi & Cari Komik | MangaFlow'
+    };
+    document.title = map[this.currentView] || defaultTitle;
   },
 
   initRouter() {
@@ -343,6 +418,7 @@ const app = {
     });
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    this.syncDocumentTitle();
 
     if (viewName === 'home') {
       document.getElementById('home-view').style.display = 'block';
@@ -626,6 +702,9 @@ const app = {
     const card = document.createElement('div');
     card.className = 'manga-card';
     card.onclick = () => this.navigate('manga', { id: item.id });
+    const warmDetail = () => Api.prefetchManga(item.id, State.settings.languages.join(','));
+    card.addEventListener('pointerenter', warmDetail, { once: true, passive: true });
+    card.addEventListener('touchstart', warmDetail, { once: true, passive: true });
 
     const statusClass = item.status === 'completed' ? 'completed' : 'ongoing';
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
@@ -743,6 +822,9 @@ const app = {
       const social = socialRes?.data || { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] };
       this.selectedManga = manga;
       this.currentMangaSocial = social;
+      this.syncDocumentTitle(manga.title);
+
+      const lastReadEntry = State.getHistory().find((h) => h.mangaId === manga.id);
 
       const isFav = State.isBookmarked(manga.id);
       const isLiked = social.userLiked || State.isMangaLikedLocally(manga.id);
@@ -826,6 +908,11 @@ const app = {
                 <div class="detail-tags-wrap">${tagsHtml}</div>
 
                 <div class="detail-actions-row">
+                  ${lastReadEntry ? `
+                  <button type="button" class="btn btn-resume-reading" id="detail-resume-btn">
+                    <i class="ri-play-circle-fill"></i> Lanjutkan Ch. ${this.escapeHtml(String(lastReadEntry.chapterNum || '0'))} (Hal. ${Number(lastReadEntry.page) || 1}/${Number(lastReadEntry.totalPages) || 1})
+                  </button>
+                  ` : ''}
                   <button class="btn btn-primary" id="detail-read-first-btn">
                     <i class="ri-book-open-line"></i> Baca Chapter Pertama
                   </button>
@@ -916,6 +1003,15 @@ const app = {
       this.filterChapters();
       this.renderCommentsList(manga.id, social.comments || []);
 
+      // Bind Smart Resume Reading button if user has reading history for this manga
+      const resumeDetailBtn = document.getElementById('detail-resume-btn');
+      if (resumeDetailBtn && lastReadEntry) {
+        resumeDetailBtn.onclick = () => {
+          const readable = chapters.filter((c) => !c.isExternal);
+          Reader.open(manga, lastReadEntry.chapterId, readable.length > 0 ? readable : chapters);
+        };
+      }
+
       // Bind Complete Source button programmatically so titles with apostrophes (e.g. JoJo's) never break JS
       const completeSrcBtn = document.getElementById('detail-complete-source-btn');
       if (completeSrcBtn) {
@@ -966,11 +1062,15 @@ const app = {
     list.innerHTML = '';
     const internalChapters = chapters.filter((c) => !c.isExternal);
     const displayList = chapters.slice(0, this.chaptersDisplayLimit || 80);
+    const lastReadChapterId = this.selectedManga
+      ? State.getHistory().find((h) => h.mangaId === this.selectedManga.id)?.chapterId
+      : null;
 
     displayList.forEach((ch) => {
       const isRead = State.isChapterRead(ch.id);
+      const isLastRead = Boolean(lastReadChapterId && ch.id === lastReadChapterId);
       const row = document.createElement('div');
-      row.className = `chapter-row ${isRead ? 'read' : ''}`;
+      row.className = `chapter-row ${isRead ? 'read' : ''} ${isLastRead ? 'last-read' : ''}`.trim();
 
       if (ch.isExternal) {
         row.onclick = () => window.open(ch.externalUrl, '_blank');
@@ -990,6 +1090,7 @@ const app = {
             <div class="chapter-row-title">${safeChapterTitle}</div>
             <div class="chapter-row-group">
               ${safeGroup}
+              ${isLastRead ? '<span class="last-read-chip">Terakhir Dibaca</span>' : ''}
               ${ch.isExternal ? '<span style="color: #38bdf8; margin-left: 6px;">[Eksternal]</span>' : ''}
             </div>
           </div>
@@ -1266,6 +1367,9 @@ const app = {
   },
 
   async performSearch(q) {
+    if (q && q.trim()) {
+      State.addRecentSearch(q.trim());
+    }
     this.navigate('search', { q });
   },
 
@@ -1286,6 +1390,12 @@ const app = {
 
     const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
+    if (currentQ.trim()) {
+      State.addRecentSearch(currentQ.trim());
+      this.syncDocumentTitle(`Cari: "${currentQ.trim()}"`);
+    } else {
+      this.syncDocumentTitle();
+    }
     const safeQ = this.escapeHtml(currentQ);
     const page = Math.max(1, parseInt(params.page || '1', 10) || 1);
 
@@ -1307,6 +1417,9 @@ const app = {
           </button>
           <button class="btn btn-sm ${isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('mangapill')">
             <i class="ri-archive-line"></i> Server 2: MangaPill (Chapter Komplit 100%)
+          </button>
+          <button type="button" class="btn btn-sm btn-secondary random-discover-btn" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.openRandomManga()">
+            <i class="ri-shuffle-line"></i> Kejutan Acak
           </button>
         </div>
 
@@ -1543,7 +1656,9 @@ const app = {
     items.forEach((item) => {
       const el = document.createElement('div');
       el.className = 'search-dropdown-item';
+      el.addEventListener('pointerenter', () => Api.prefetchManga(item.id, State.settings.languages.join(',')), { once: true, passive: true });
       el.onclick = () => {
+        if (currentQ) State.addRecentSearch(currentQ);
         dropdown.classList.remove('open');
         this.toggleMobileSearch(false);
         this.navigate('manga', { id: item.id });
@@ -1596,6 +1711,112 @@ const app = {
     const q = input ? input.value.trim() : '';
     if (q) {
       this.executeQuickSearch(q, targetId);
+    } else {
+      this.renderRecentSearchSuggestions(targetId);
+    }
+  },
+
+  renderRecentSearchSuggestions(targetId = 'quick-search-results') {
+    const dropdown = document.getElementById(targetId);
+    if (!dropdown) return;
+
+    const recent = State.getRecentSearches();
+    dropdown.innerHTML = '';
+
+    // Quick Random Discovery Row
+    const randomRow = document.createElement('button');
+    randomRow.type = 'button';
+    randomRow.className = 'quick-random-btn';
+    randomRow.innerHTML = '<i class="ri-shuffle-line"></i> <span>Kejutan! Buka Rekomendasi Manga Acak</span> <i class="ri-arrow-right-s-line" style="margin-left:auto;"></i>';
+    randomRow.onclick = (e) => {
+      e.stopPropagation();
+      dropdown.classList.remove('open');
+      this.toggleMobileSearch(false);
+      this.openRandomManga();
+    };
+    dropdown.appendChild(randomRow);
+
+    if (recent.length > 0) {
+      const headerRow = document.createElement('div');
+      headerRow.className = 'recent-search-header';
+      headerRow.innerHTML = '<span><i class="ri-history-line"></i> Pencarian Terakhir</span>';
+      const clearAllBtn = document.createElement('button');
+      clearAllBtn.type = 'button';
+      clearAllBtn.className = 'recent-clear-all-btn';
+      clearAllBtn.textContent = 'Hapus';
+      clearAllBtn.onclick = (e) => {
+        e.stopPropagation();
+        State.clearRecentSearches();
+        this.renderRecentSearchSuggestions(targetId);
+      };
+      headerRow.appendChild(clearAllBtn);
+      dropdown.appendChild(headerRow);
+
+      const chipsWrap = document.createElement('div');
+      chipsWrap.className = 'recent-search-chips';
+      recent.forEach((term) => {
+        const chip = document.createElement('div');
+        chip.className = 'recent-search-chip';
+
+        const labelBtn = document.createElement('button');
+        labelBtn.type = 'button';
+        labelBtn.className = 'recent-chip-label';
+        labelBtn.textContent = term;
+        labelBtn.onclick = (e) => {
+          e.stopPropagation();
+          const input = targetId.includes('mobile')
+            ? document.getElementById('mobile-search-input')
+            : document.getElementById('global-search-input');
+          if (input) input.value = term;
+          dropdown.classList.remove('open');
+          this.toggleMobileSearch(false);
+          this.performSearch(term);
+        };
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'recent-chip-del';
+        delBtn.setAttribute('aria-label', `Hapus pencarian ${term}`);
+        delBtn.innerHTML = '<i class="ri-close-line"></i>';
+        delBtn.onclick = (e) => {
+          e.stopPropagation();
+          State.removeRecentSearch(term);
+          this.renderRecentSearchSuggestions(targetId);
+        };
+
+        chip.appendChild(labelBtn);
+        chip.appendChild(delBtn);
+        chipsWrap.appendChild(chip);
+      });
+      dropdown.appendChild(chipsWrap);
+    }
+
+    dropdown.classList.add('open');
+  },
+
+  async openRandomManga() {
+    if (this.randomLoading) return;
+    this.randomLoading = true;
+    this.showTopLoader();
+    try {
+      const res = await Api.getRandomManga();
+      if (res && res.success && res.data && res.data.id) {
+        this.showToast(`Rekomendasi Acak: ${res.data.title}`);
+        this.navigate('manga', { id: res.data.id });
+      } else {
+        throw new Error('Tidak dapat memuat manga acak');
+      }
+    } catch (err) {
+      if (this.trendingData && this.trendingData.length > 0) {
+        const pick = this.trendingData[Math.floor(Math.random() * this.trendingData.length)];
+        this.showToast(`Rekomendasi Pilihan: ${pick.title}`);
+        this.navigate('manga', { id: pick.id });
+      } else {
+        this.showToast('Gagal memuat manga acak: ' + (err.message || 'Coba lagi'));
+      }
+    } finally {
+      this.randomLoading = false;
+      this.finishTopLoader();
     }
   },
 

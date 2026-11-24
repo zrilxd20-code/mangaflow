@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.8" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.9" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.9" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=1.0.8" />
-  <link rel="stylesheet" href="./css/reader.css?v=1.0.8" />
+  <link rel="stylesheet" href="./css/style.css?v=1.0.9" />
+  <link rel="stylesheet" href="./css/reader.css?v=1.0.9" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -377,7 +377,8 @@
   </header>
 
   <!-- Main View Container -->
-  <main id="app-viewport">
+  <main id="app-viewport" tabindex="-1">
+    <div class="scroll-sentinel" id="scroll-top-sentinel" aria-hidden="true"></div>
     <!-- View will be rendered here dynamically -->
     <div id="home-view" class="view-section active">
       <!-- Sleek Mobile & Desktop PWA Install Banner -->
@@ -525,6 +526,11 @@
 
   <!-- Fullscreen Manga Reader Modal -->
   <div id="reader-overlay" class="reader-overlay" style="display: none;">
+    <!-- Top Thin Reading Progress Line -->
+    <div class="reader-progress-line" id="reader-progress-line" aria-hidden="true">
+      <div class="reader-progress-line-fill" id="reader-progress-line-fill"></div>
+    </div>
+
     <!-- Reader Top HUD -->
     <div class="reader-hud reader-hud-top" id="reader-top-hud">
       <div class="reader-hud-left">
@@ -976,6 +982,11 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
+  <!-- Scroll Position Aware Back-to-Top Floating Button -->
+  <button type="button" class="scroll-top-btn" id="scroll-top-btn" aria-label="Kembali ke atas" title="Kembali ke atas" onclick="app.scrollToTop()">
+    <i class="ri-arrow-up-line"></i>
+  </button>
+
   <!-- Mobile Bottom Tab Bar -->
   <nav class="mobile-nav">
     <button class="mobile-nav-item active" id="mob-nav-home" onclick="app.navigate('home')">
@@ -1044,10 +1055,10 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=1.0.8"></script>
-  <script src="./js/api.js?v=1.0.8"></script>
-  <script src="./js/reader.js?v=1.0.8"></script>
-  <script src="./js/app.js?v=1.0.8"></script>
+  <script src="./js/state.js?v=1.0.9"></script>
+  <script src="./js/api.js?v=1.0.9"></script>
+  <script src="./js/reader.js?v=1.0.9"></script>
+  <script src="./js/app.js?v=1.0.9"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>

@@ -30,6 +30,7 @@ const Reader = {
   preloadedSet: new Set(),
   preloadHideTimeout: null,
   loadRequestId: 0,
+  prefetchedChapterId: null,
 
   // DOM Elements
   elements: {},
@@ -92,7 +93,8 @@ const Reader = {
       currentPageLabel: document.getElementById('reader-current-page'),
       totalPagesLabel: document.getElementById('reader-total-pages'),
       preloadPill: document.getElementById('reader-preload-pill'),
-      preloadStatusText: document.getElementById('preload-status-text')
+      preloadStatusText: document.getElementById('preload-status-text'),
+      progressLineFill: document.getElementById('reader-progress-line-fill')
     };
 
     this.mode = State.settings.readerMode || 'webtoon';
@@ -828,6 +830,7 @@ const Reader = {
     }
 
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('reader-open');
     this.elements.overlay.style.display = 'flex';
     this.elements.mangaTitle.textContent = manga.title;
 
@@ -890,12 +893,16 @@ const Reader = {
       const startPage = Math.max(1, Math.min(this.totalPages, parseInt(savedPage, 10) || 1));
       this.currentPage = startPage;
 
-      // Update Chapter Info Title
+      // Update Chapter Info Title & Browser Tab Title
       this.elements.chapterTitle.textContent = `Chapter ${res.data.chapter || '0'}${res.data.title ? ': ' + res.data.title : ''}`;
+      if (this.manga && this.manga.title) {
+        document.title = `Ch. ${res.data.chapter || '0'} - ${this.manga.title} | MangaFlow`;
+      }
       this.elements.totalPagesLabel.textContent = this.totalPages;
       this.elements.currentPageLabel.textContent = this.currentPage;
       this.elements.pageSlider.max = this.totalPages;
       this.elements.pageSlider.value = this.currentPage;
+      this.updateProgressBar();
 
       // Save to History State
       State.saveHistory(this.manga, res.data, this.currentPage, this.totalPages);
@@ -904,8 +911,9 @@ const Reader = {
       this.elements.loader.style.display = 'none';
       this.renderPages();
 
-      // Trigger Smart Preload for upcoming pages
+      // Trigger Smart Preload for upcoming pages & next chapter if short chapter
       this.preloadUpcomingPages(startPage, 4);
+      this.prefetchNextChapterIfNearEnd();
 
       if (startPage > 1) {
         if (this.mode === 'webtoon') {
@@ -965,7 +973,12 @@ const Reader = {
 
       const img = document.createElement('img');
       img.className = 'strip-page-img';
-      img.loading = 'lazy';
+      if (page.page === this.currentPage) {
+        img.loading = 'eager';
+        img.fetchPriority = 'high';
+      } else {
+        img.loading = 'lazy';
+      }
       img.alt = `Page ${page.page}`;
 
       Api.setupImageResilience(img, page);
@@ -1003,10 +1016,12 @@ const Reader = {
           this.currentPage = pageNum;
           this.elements.currentPageLabel.textContent = pageNum;
           this.elements.pageSlider.value = pageNum;
+          this.updateProgressBar();
           State.saveHistory(this.manga, this.chapterData, pageNum, this.totalPages);
 
-          // Smart preload next chunk
+          // Smart preload next chunk & background next-chapter warm-up
           this.preloadUpcomingPages(pageNum, 4);
+          this.prefetchNextChapterIfNearEnd();
         }
         break;
       }
@@ -1021,6 +1036,7 @@ const Reader = {
 
     const img = this.elements.singleImg;
     img.style.opacity = '0';
+    img.fetchPriority = 'high';
 
     Api.setupImageResilience(img, page);
 
@@ -1037,10 +1053,52 @@ const Reader = {
 
     this.elements.currentPageLabel.textContent = this.currentPage;
     this.elements.pageSlider.value = this.currentPage;
+    this.updateProgressBar();
     State.saveHistory(this.manga, this.chapterData, this.currentPage, this.totalPages);
 
-    // Preload next 3 pages in advance for instant flips
+    // Preload next 3 pages in advance for instant flips & warm next chapter near end
     this.preloadUpcomingPages(this.currentPage, 3);
+    this.prefetchNextChapterIfNearEnd();
+  },
+
+  updateProgressBar() {
+    if (!this.elements.progressLineFill) return;
+    const total = Math.max(1, this.totalPages || 1);
+    const ratio = Math.max(0, Math.min(1, (this.currentPage || 1) / total));
+    this.elements.progressLineFill.style.transform = `scaleX(${ratio.toFixed(4)})`;
+  },
+
+  prefetchNextChapterIfNearEnd() {
+    if (!this.allChapters || !this.allChapters.length || !this.currentChapterId) return;
+    if (typeof navigator !== 'undefined' && navigator.connection && navigator.connection.saveData) return;
+
+    const threshold = Math.max(2, Math.ceil((this.totalPages || 1) * 0.75));
+    if (this.currentPage < threshold && this.totalPages > 2) return;
+
+    const currentIndex = this.allChapters.findIndex((c) => c.id === this.currentChapterId);
+    if (currentIndex <= 0) return; // index 0 is newest chapter in descending array
+    const nextChapter = this.allChapters[currentIndex - 1];
+    if (!nextChapter || nextChapter.isExternal || this.prefetchedChapterId === nextChapter.id) return;
+
+    this.prefetchedChapterId = nextChapter.id;
+    const warm = () => {
+      Api.getChapterPages(nextChapter.id)
+        .then((res) => {
+          const pages = res?.data?.pages || [];
+          pages.slice(0, 2).forEach((p) => {
+            const preImg = new Image();
+            preImg.fetchPriority = 'low';
+            preImg.src = this.quality === 'saver' ? p.dataSaverUrl : p.directUrl;
+          });
+        })
+        .catch(() => {});
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(warm, { timeout: 1000 });
+    } else {
+      setTimeout(warm, 200);
+    }
   },
 
   // Smart Preload Engine
@@ -1058,6 +1116,7 @@ const Reader = {
         preloadingAny = true;
 
         const preImg = new Image();
+        preImg.fetchPriority = 'low';
         const src = this.quality === 'saver' ? targetPageData.dataSaverUrl : targetPageData.directUrl;
         preImg.src = src;
         Api.setupImageResilience(preImg, targetPageData);
@@ -1159,7 +1218,11 @@ const Reader = {
       this.elements.shortcutsModal.style.display = 'none';
     }
     document.body.style.overflow = '';
+    document.body.classList.remove('reader-open');
     app.renderContinueReading();
+    if (typeof app !== 'undefined' && app.syncDocumentTitle) {
+      app.syncDocumentTitle();
+    }
 
     if (updateHash && window.location.hash.startsWith('#/reader')) {
       if (this.manga && this.manga.id) {

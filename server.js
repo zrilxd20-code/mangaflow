@@ -788,6 +788,32 @@ app.get('/api/tags', async (req, res) => {
   }
 });
 
+// 4b. Random Manga Discovery (with instant pool fallback so it never fails)
+app.get('/api/random', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const data = await resilientFetch(
+      `${MANGADEX_API}/manga/random?includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive`
+    );
+    if (data && data.data) {
+      const formatted = formatManga(data.data);
+      cache.set(`manga_detail_${formatted.id}`, formatted, 1800);
+      return res.json({ success: true, data: formatted, source: 'api' });
+    }
+    throw new Error('Random manga response empty');
+  } catch (err) {
+    const fallbackPool = [
+      ...(cache.get('trending_manga') || []),
+      ...(cache.get('latest_manga_1') || [])
+    ];
+    if (fallbackPool.length > 0) {
+      const pick = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
+      return res.json({ success: true, data: pick, source: 'fallback-pool' });
+    }
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // 5. Manga Detail
 app.get('/api/manga/:id', async (req, res) => {
   const { id } = req.params;

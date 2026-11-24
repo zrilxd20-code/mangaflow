@@ -191,6 +191,34 @@ const Api = {
     return this.request('/tags', { cacheTtl: 30 * 60 * 1000 });
   },
 
+  // 4b. Random Manga
+  async getRandomManga() {
+    return this.request('/random');
+  },
+
+  // Warm manga detail & chapters into memory cache on hover/touch for instant navigation
+  _prefetchedIds: new Set(),
+  prefetchManga(id, lang = 'en,id') {
+    if (!id || this._prefetchedIds.has(id)) return;
+    if (typeof navigator !== 'undefined' && navigator.connection && navigator.connection.saveData) {
+      return;
+    }
+    this._prefetchedIds.add(id);
+    if (this._prefetchedIds.size > 60) {
+      const oldest = this._prefetchedIds.values().next().value;
+      if (oldest) this._prefetchedIds.delete(oldest);
+    }
+    const run = () => {
+      this.getManga(id).catch(() => {});
+      this.getChapters(id, lang).catch(() => {});
+    };
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      window.requestIdleCallback(run, { timeout: 600 });
+    } else {
+      setTimeout(run, 80);
+    }
+  },
+
   // 5. Manga Details
   async getManga(id) {
     if (String(id).startsWith('pill-') || /^\d+$/.test(String(id))) {

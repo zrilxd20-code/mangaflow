@@ -7,6 +7,7 @@ const State = {
   HISTORY_KEY: 'mangaflow_history',
   SETTINGS_KEY: 'mangaflow_settings',
   LIKES_KEY: 'mangaflow_likes',
+  RECENT_SEARCHES_KEY: 'mangaflow_recent_searches',
   AUTH_TOKEN_KEY: 'mangaflow_auth_token',
   AUTH_USER_KEY: 'mangaflow_auth_user',
 
@@ -436,6 +437,41 @@ const State = {
   isChapterRead(chapterId) {
     const list = this.getHistory();
     return list.some((h) => h.chapterId === chapterId);
+  },
+
+  // ---------------- Recent Search Queries ----------------
+  getRecentSearches() {
+    try {
+      const list = JSON.parse(localStorage.getItem(this.RECENT_SEARCHES_KEY) || '[]');
+      return Array.isArray(list) ? list.filter((q) => typeof q === 'string' && q.trim()).slice(0, 6) : [];
+    } catch (_) {
+      return [];
+    }
+  },
+
+  addRecentSearch(query) {
+    const clean = String(query || '').trim();
+    if (!clean || clean.length < 2) return;
+    let list = this.getRecentSearches().filter((q) => q.toLowerCase() !== clean.toLowerCase());
+    list.unshift(clean.slice(0, 60));
+    list = list.slice(0, 6);
+    try {
+      localStorage.setItem(this.RECENT_SEARCHES_KEY, JSON.stringify(list));
+    } catch (_) {}
+  },
+
+  removeRecentSearch(query) {
+    const target = String(query || '').trim().toLowerCase();
+    const list = this.getRecentSearches().filter((q) => q.toLowerCase() !== target);
+    try {
+      localStorage.setItem(this.RECENT_SEARCHES_KEY, JSON.stringify(list));
+    } catch (_) {}
+  },
+
+  clearRecentSearches() {
+    try {
+      localStorage.removeItem(this.RECENT_SEARCHES_KEY);
+    } catch (_) {}
   },
 
   // ---------------- Backup Export & Import (JSON) ----------------

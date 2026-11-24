@@ -563,6 +563,24 @@ async function runComprehensiveQA() {
       appJsContent.includes('syncLangPrefUI()')
     );
 
+    // 9.11 Additive v1.0.9 Enhancements Suite (Random Manga API, Hover/Next-Chapter Prefetch, Resume Detail, Scroll-Top & Recent Searches)
+    const rRandom = await fetch(`${baseUrl}/api/random`);
+    const randomJson = await rRandom.json();
+    assertTest(
+      'Peningkatan Fitur v1.0.9 Aktif (/api/random, Hover & Next-Chapter Prefetch, Smart Resume, Scroll-Top & Recent Searches)',
+      rRandom.status === 200 &&
+      randomJson.success === true &&
+      Boolean(randomJson.data?.id && randomJson.data?.title) &&
+      indexHtml.includes('id="scroll-top-btn"') &&
+      indexHtml.includes('id="reader-progress-line"') &&
+      styleCss.includes('container-type: scroll-state') &&
+      styleCss.includes('content-visibility: auto') &&
+      readerJsContent.includes('prefetchNextChapterIfNearEnd') &&
+      appJsContent.includes('detail-resume-btn') &&
+      appJsContent.includes('renderRecentSearchSuggestions') &&
+      appJsContent.includes('openRandomManga')
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {

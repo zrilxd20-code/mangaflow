@@ -14,6 +14,29 @@
   touch-action: pan-y;
 }
 
+/* Top Thin Reading Progress Strip (Always Visible Even When HUD Auto-Hides) */
+.reader-progress-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  z-index: 65;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.reader-progress-line-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8 0%, #6366f1 55%, #ec4899 100%);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.2s ease-out;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.65);
+}
+
 /* Reader HUD (Heads-Up-Display) */
 .reader-hud {
   position: absolute;
