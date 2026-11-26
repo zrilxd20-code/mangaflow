@@ -19,7 +19,7 @@ const app = {
   selectedFilterTags: new Set(),
   selectedSort: 'relevance',
   selectedStatus: '',
-  activeSource: 'mangadex',
+  activeSource: 'auto',
   chaptersDisplayLimit: 80,
 
   async init() {
@@ -709,6 +709,7 @@ const app = {
     const statusClass = item.status === 'completed' ? 'completed' : 'ongoing';
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
     const isPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+    const isHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
     const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
     const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
 
@@ -725,7 +726,8 @@ const app = {
               <i class="ri-checkbox-blank-circle-fill" style="font-size: 0.55rem;"></i> ${statusText}
             </span>
           `}
-          ${item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
+          ${isHybrid ? `<span class="card-badge" style="background: rgba(16, 185, 129, 0.85); color: #fff; border: none; font-weight: 700;"><i class="ri-links-line"></i> Hybrid</span>` : ''}
+          ${!isHybrid && item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
         </div>
         <span class="card-read-pill"><i class="ri-book-open-line"></i> Baca</span>
       </div>
@@ -808,9 +810,10 @@ const app = {
     `;
 
     try {
+      const useHybridChapters = this.activeSource !== 'mangadex';
       const [mangaRes, chaptersRes, socialRes] = await Promise.all([
         Api.getManga(mangaId),
-        Api.getChapters(mangaId, State.settings.languages.join(',')),
+        Api.getChapters(mangaId, State.settings.languages.join(','), 'desc', { hybrid: useHybridChapters }),
         Api.getMangaSocial(mangaId).catch(() => ({
           success: true,
           data: { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] }
@@ -819,6 +822,8 @@ const app = {
 
       const manga = mangaRes.data;
       const chapters = chaptersRes.data || [];
+      const hybridMerged = Boolean(chaptersRes.hybridMerged);
+      const addedFromPill = Number(chaptersRes.addedFromPill) || 0;
       const social = socialRes?.data || { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] };
       this.selectedManga = manga;
       this.currentMangaSocial = social;
@@ -881,6 +886,12 @@ const app = {
                     <i class="ri-book-mark-line"></i>
                     <span>${(manga.follows || 0).toLocaleString()} Pembaca</span>
                   </div>
+                  ${hybridMerged ? `
+                  <div class="stat-item" style="color: #34d399; font-weight: 700;" title="Chapter bolong/eksternal ditambal otomatis dari Server 2">
+                    <i class="ri-links-line"></i>
+                    <span>Hybrid Otomatis (+${addedFromPill} Ch. Ditambal)</span>
+                  </div>
+                  ` : ''}
                   `}
                   <div class="stat-item">
                     <i class="ri-information-line"></i>
@@ -918,7 +929,7 @@ const app = {
                   </button>
                   ${!isPill ? `
                   <button type="button" class="btn btn-secondary" id="detail-complete-source-btn">
-                    <i class="ri-archive-line"></i> Buka di Server Komplit
+                    <i class="ri-archive-line"></i> ${hybridMerged ? 'Lihat Versi Arsip Saja' : 'Buka di Server Komplit'}
                   </button>
                   ` : ''}
                   <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${this.escapeHtml(manga.id)}')">
@@ -953,9 +964,9 @@ const app = {
                   <option value="external">Hanya Link Eksternal</option>
                 </select>
                 <select class="filter-select" id="chapter-lang-filter" onchange="app.filterChapters()">
-                  <option value="all" ${isPill ? 'selected' : ''}>Semua Bahasa</option>
-                  <option value="en" ${!isPill ? 'selected' : ''}>English (EN)</option>
+                  <option value="all" selected>Semua Bahasa (ID + EN)</option>
                   <option value="id">Indonesia (ID)</option>
+                  <option value="en">English (EN)</option>
                 </select>
                 <select class="filter-select" id="chapter-sort-order" onchange="app.sortChapters(this.value)">
                   <option value="desc" selected>Terbaru Dulu</option>
@@ -1090,6 +1101,7 @@ const app = {
             <div class="chapter-row-title">${safeChapterTitle}</div>
             <div class="chapter-row-group">
               ${safeGroup}
+              ${ch.isHybridFill ? '<span class="hybrid-fill-chip">Auto-Fill</span>' : ''}
               ${isLastRead ? '<span class="last-read-chip">Terakhir Dibaca</span>' : ''}
               ${ch.isExternal ? '<span style="color: #38bdf8; margin-left: 6px;">[Eksternal]</span>' : ''}
             </div>
@@ -1351,14 +1363,14 @@ const app = {
 
   // ---------------- Search & Filter View ----------------
   switchSource(src) {
-    this.activeSource = src;
+    this.syncServerUI(src);
     const pageInput = document.getElementById('search-page-input');
     const q = pageInput ? pageInput.value.trim() : '';
     this.renderSearchView({ q });
   },
 
   findCompleteSource(mangaTitle) {
-    this.activeSource = 'mangapill';
+    this.syncServerUI('mangapill');
     let cleanTitle = String(mangaTitle || '');
     try {
       cleanTitle = decodeURIComponent(cleanTitle);
@@ -1388,6 +1400,7 @@ const app = {
       this.selectedStatus = params.status;
     }
 
+    const isAuto = this.activeSource === 'auto';
     const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
     if (currentQ.trim()) {
@@ -1405,18 +1418,21 @@ const app = {
         <div class="search-page-bar" style="margin-bottom: 16px;">
           <div class="search-input-wrapper" style="max-width: 600px; margin: 0 auto;">
             <i class="ri-search-line search-icon"></i>
-            <input type="text" id="search-page-input" value="${safeQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author...'}" />
+            <input type="text" id="search-page-input" value="${safeQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author (Otomatis Gabung Server 1 & 2)...'}" />
             ${currentQ ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
           </div>
         </div>
 
         <!-- Server Selector Bar -->
         <div class="source-selector-bar" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;">
-          <button class="btn btn-sm ${!isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('mangadex')">
-            <i class="ri-fire-fill"></i> Server 1: MangaDex (Official)
+          <button class="btn btn-sm ${isAuto ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('auto')">
+            <i class="ri-sparkling-2-fill"></i> Otomatis (Gabung Server 1 & 2)
           </button>
-          <button class="btn btn-sm ${isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('mangapill')">
-            <i class="ri-archive-line"></i> Server 2: MangaPill (Chapter Komplit 100%)
+          <button class="btn btn-sm ${this.activeSource === 'mangadex' ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.switchSource('mangadex')">
+            <i class="ri-fire-fill"></i> MangaDex Saja
+          </button>
+          <button class="btn btn-sm ${isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.switchSource('mangapill')">
+            <i class="ri-archive-line"></i> MangaPill Saja
           </button>
           <button type="button" class="btn btn-sm btn-secondary random-discover-btn" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.openRandomManga()">
             <i class="ri-shuffle-line"></i> Kejutan Acak
@@ -1425,8 +1441,8 @@ const app = {
 
         <div class="section-header">
           <div class="section-title-wrap">
-            <i class="${isPill ? 'ri-archive-line' : 'ri-search-line'} title-icon"></i>
-            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : 'Jelajahi & Cari Komik')}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
+            <i class="${isPill ? 'ri-archive-line' : (isAuto ? 'ri-sparkling-2-fill' : 'ri-search-line')} title-icon"></i>
+            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : (isAuto ? 'Jelajahi & Cari (Mode Hybrid Otomatis)' : 'Jelajahi & Cari (MangaDex)'))}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
           </div>
           ${!isPill ? `
           <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
@@ -1475,7 +1491,9 @@ const app = {
           tags: Array.from(this.selectedFilterTags).join(','),
           page
         };
-        res = await Api.search(queryParams, signal);
+        res = this.activeSource === 'auto'
+          ? await Api.searchHybrid(queryParams, signal)
+          : await Api.search(queryParams, signal);
       }
 
       if (signal.aborted) return;
@@ -1569,7 +1587,9 @@ const app = {
 
     const dropdown = document.getElementById(targetId);
     if (dropdown) {
-      const serverLabel = this.activeSource === 'mangapill' ? 'Server 2 (MangaPill)' : 'Server 1 (MangaDex)';
+      const serverLabel = this.activeSource === 'mangapill'
+        ? 'Server 2 (MangaPill)'
+        : (this.activeSource === 'mangadex' ? 'Server 1 (MangaDex)' : 'Semua Server (Otomatis)');
       dropdown.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 12px;color:var(--text-muted);font-size:0.86rem;">
           <progress aria-label="Mencari" class="loading-spinner" style="--size:22px;--thickness:2.5px;"></progress>
@@ -1584,6 +1604,9 @@ const app = {
       if (this.activeSource === 'mangapill') {
         const res = await Api.searchMangaPill(q, 1, signal);
         items = (res.data || []).slice(0, 7);
+      } else if (this.activeSource === 'auto') {
+        const res = await Api.searchHybrid({ q, limit: 8 }, signal);
+        items = (res.data || []).slice(0, 8);
       } else {
         const res = await Api.search({ q, limit: 7 }, signal);
         items = (res.data || []).slice(0, 7);
@@ -1623,7 +1646,11 @@ const app = {
     if (!dropdown) return;
     dropdown.innerHTML = '';
 
+    const isAuto = this.activeSource === 'auto';
     const isPill = this.activeSource === 'mangapill';
+    const modeText = isAuto
+      ? '✨ Mode Otomatis: Gabungan Server 1 & 2'
+      : (isPill ? '🟢 Mode Manual: Server 2 (MangaPill)' : '🔥 Mode Manual: Server 1 (MangaDex)');
 
     // Header bar inside quick dropdown showing active server & toggle
     const headerEl = document.createElement('div');
@@ -1631,10 +1658,10 @@ const app = {
     headerEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 8px 10px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 6px;';
     headerEl.innerHTML = `
       <span style="font-size: 0.76rem; color: var(--text-dim); font-weight: 600;">
-        ${isPill ? '🟢 Server 2: MangaPill (Komplit)' : '🔥 Server 1: MangaDex (Official)'}
+        ${modeText}
       </span>
       <button style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-subtle); color: var(--text-main); cursor: pointer; font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
-        Ganti ke ${isPill ? 'Server 1' : 'Server 2'} ⇄
+        Mode ⇄
       </button>
     `;
     dropdown.appendChild(headerEl);
@@ -1643,9 +1670,9 @@ const app = {
       const emptyEl = document.createElement('div');
       emptyEl.style.cssText = 'padding: 16px 10px; text-align: center; color: var(--text-dim); font-size: 0.85rem;';
       emptyEl.innerHTML = `
-        Tidak ada hasil di ${isPill ? 'Server 2' : 'Server 1'}.<br>
+        Tidak menemukan hasil yang cocok.<br>
         <button class="btn btn-sm btn-secondary" style="margin-top: 8px; padding: 4px 12px; font-size: 0.78rem;" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
-          Cari di ${isPill ? 'Server 1: MangaDex' : 'Server 2: MangaPill (Komplit)'}
+          Ganti Mode Sumber Pencarian ⇄
         </button>
       `;
       dropdown.appendChild(emptyEl);
@@ -1665,6 +1692,7 @@ const app = {
       };
 
       const isItemPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+      const isItemHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
       const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
       const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
 
@@ -1675,7 +1703,7 @@ const app = {
           <div class="search-item-meta">
             <span>${this.escapeHtml(item.status || 'Publishing')}</span>
             <span>•</span>
-            <span style="${isItemPill ? 'color: #10b981; font-weight: 600;' : ''}">${isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? this.escapeHtml(item.tags[0]) : 'Manga')}</span>
+            <span style="${(isItemPill || isItemHybrid) ? 'color: #10b981; font-weight: 600;' : ''}">${isItemHybrid ? '⚡ Hybrid Komplit' : (isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? this.escapeHtml(item.tags[0]) : 'Manga'))}</span>
           </div>
         </div>
       `;
@@ -1703,8 +1731,9 @@ const app = {
   },
 
   toggleSearchSourceFromDropdown(targetId) {
-    const newSource = this.activeSource === 'mangapill' ? 'mangadex' : 'mangapill';
-    this.selectGlobalServer(newSource);
+    const order = ['auto', 'mangadex', 'mangapill'];
+    const nextIdx = (order.indexOf(this.activeSource) + 1) % order.length;
+    this.selectGlobalServer(order[nextIdx]);
     const input = targetId.includes('mobile')
       ? document.getElementById('mobile-search-input')
       : document.getElementById('global-search-input');
@@ -1825,35 +1854,47 @@ const app = {
     if (menu) menu.classList.toggle('open');
   },
 
-  selectGlobalServer(source) {
+  syncServerUI(source = 'auto') {
     this.activeSource = source;
-    const isPill = source === 'mangapill';
-
+    const labels = {
+      auto: 'Otomatis',
+      mangadex: 'MangaDex',
+      mangapill: 'MangaPill'
+    };
     const label = document.getElementById('current-server-label');
     if (label) {
-      label.textContent = isPill ? 'MangaPill' : 'MangaDex';
+      label.textContent = labels[source] || 'Otomatis';
     }
 
-    const optDex = document.getElementById('server-opt-mangadex');
-    const optPill = document.getElementById('server-opt-mangapill');
-    if (optDex) optDex.classList.toggle('active', !isPill);
-    if (optPill) optPill.classList.toggle('active', isPill);
+    document.getElementById('server-opt-auto')?.classList.toggle('active', source === 'auto');
+    document.getElementById('server-opt-mangadex')?.classList.toggle('active', source === 'mangadex');
+    document.getElementById('server-opt-mangapill')?.classList.toggle('active', source === 'mangapill');
 
-    const mobDex = document.getElementById('mob-srv-mangadex');
-    const mobPill = document.getElementById('mob-srv-mangapill');
-    if (mobDex) mobDex.classList.toggle('active', !isPill);
-    if (mobPill) mobPill.classList.toggle('active', isPill);
+    document.getElementById('mob-srv-auto')?.classList.toggle('active', source === 'auto');
+    document.getElementById('mob-srv-mangadex')?.classList.toggle('active', source === 'mangadex');
+    document.getElementById('mob-srv-mangapill')?.classList.toggle('active', source === 'mangapill');
+  },
+
+  selectGlobalServer(source) {
+    this.syncServerUI(source);
 
     const menu = document.getElementById('server-dropdown-menu');
     if (menu) menu.classList.remove('open');
 
-    this.showToast(isPill ? 'Aktif: Server 2 MangaPill (Chapter Komplit 100%)' : 'Aktif: Server 1 MangaDex (Official & ID)');
+    const toastMessages = {
+      auto: 'Mode Otomatis Aktif: Server 1 & Server 2 Digabung Cerdas',
+      mangadex: 'Mode Manual: Hanya Server 1 (MangaDex)',
+      mangapill: 'Mode Manual: Hanya Server 2 (MangaPill Komplit)'
+    };
+    this.showToast(toastMessages[source] || toastMessages.auto);
 
-    // Refresh search view if currently open
+    // Refresh search or manga detail view if currently open
     if (this.currentView === 'search') {
       const pageInput = document.getElementById('search-page-input');
       const q = pageInput ? pageInput.value.trim() : '';
       this.renderSearchView({ q });
+    } else if (this.currentView === 'manga' && this.selectedManga) {
+      this.renderMangaDetailView(this.selectedManga.id);
     }
   },
 
@@ -1927,14 +1968,8 @@ const app = {
 
           const found = this.filterTags.find((t) => t.name.toLowerCase() === g.toLowerCase());
           if (found) {
-            if (this.activeSource !== 'mangadex') {
-              this.activeSource = 'mangadex';
-              const label = document.getElementById('current-server-label');
-              if (label) label.textContent = 'MangaDex';
-              document.getElementById('server-opt-mangadex')?.classList.add('active');
-              document.getElementById('server-opt-mangapill')?.classList.remove('active');
-              document.getElementById('mob-srv-mangadex')?.classList.add('active');
-              document.getElementById('mob-srv-mangapill')?.classList.remove('active');
+            if (this.activeSource === 'mangapill') {
+              this.syncServerUI('auto');
             }
             this.selectedFilterTags.clear();
             this.selectedFilterTags.add(found.id);

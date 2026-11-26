@@ -3824,6 +3824,24 @@ body.reader-open .scroll-top-btn {
   border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
+.hybrid-fill-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #a5b4fc;
+  background: rgba(99, 102, 241, 0.16);
+  border: 1px solid rgba(129, 140, 248, 0.35);
+}
+
+.server-opt-badge.auto {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.24));
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+}
+
 /* 4. Quick Search Recent Chips & Random Manga Discovery */
 .quick-random-btn {
   width: 100%;

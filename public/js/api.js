@@ -186,6 +186,22 @@ const Api = {
     return this.request(`/search?${qs.toString()}`, opts);
   },
 
+  // 3b. Unified Smart Hybrid Search (MangaDex + MangaPill Auto-Merge)
+  async searchHybrid(params = {}, signal = null) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q);
+    if (params.tags) qs.set('tags', params.tags);
+    if (params.status) qs.set('status', params.status);
+    if (params.sort) qs.set('sort', params.sort);
+    if (params.lang) qs.set('lang', params.lang);
+    if (params.page) qs.set('page', params.page);
+    if (params.limit) qs.set('limit', params.limit);
+
+    const opts = { cacheTtl: 2 * 60 * 1000 };
+    if (signal) opts.signal = signal;
+    return this.request(`/hybrid/search?${qs.toString()}`, opts);
+  },
+
   // 4. Tags
   async getTags() {
     return this.request('/tags', { cacheTtl: 30 * 60 * 1000 });
@@ -227,8 +243,8 @@ const Api = {
     return this.request(`/manga/${encodeURIComponent(id)}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
-  // 6. Manga Chapters
-  async getChapters(mangaId, lang = 'en,id', order = 'desc') {
+  // 6. Manga Chapters (supports Smart Hybrid Auto-Fill by default)
+  async getChapters(mangaId, lang = 'en,id', order = 'desc', options = {}) {
     if (String(mangaId).startsWith('pill-') || /^\d+$/.test(String(mangaId))) {
       const res = await this.getMangaPillDetail(mangaId);
       let chapters = res.data?.chapters || [];
@@ -237,7 +253,24 @@ const Api = {
       }
       return { success: true, data: chapters, total: chapters.length };
     }
-    return this.request(`/manga/${encodeURIComponent(mangaId)}/chapters?lang=${encodeURIComponent(lang)}&order=${order}`, { cacheTtl: 3 * 60 * 1000 });
+    const qs = new URLSearchParams({
+      lang,
+      order,
+      hybrid: options.hybrid === false ? '0' : '1'
+    });
+    if (options.title) {
+      qs.set('title', options.title);
+    }
+    return this.request(`/manga/${encodeURIComponent(mangaId)}/chapters?${qs.toString()}`, { cacheTtl: 3 * 60 * 1000 });
+  },
+
+  // 6b. Smart Reader Auto-Fallback Chapter Resolver
+  async getFallbackChapterPages({ mangaId = '', mangaTitle = '', chapter = '' } = {}) {
+    const qs = new URLSearchParams();
+    if (mangaId) qs.set('mangaId', mangaId);
+    if (mangaTitle) qs.set('mangaTitle', mangaTitle);
+    if (chapter !== undefined && chapter !== null) qs.set('chapter', String(chapter));
+    return this.request(`/hybrid/fallback-chapter?${qs.toString()}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   // 7. Chapter Pages

@@ -581,6 +581,50 @@ async function runComprehensiveQA() {
       appJsContent.includes('openRandomManga')
     );
 
+    // 9.12 Smart Hybrid Auto-Merge Engine QA (Unified Search, Auto-Fill Missing Chapters on One Piece, & Reader Auto-Fallback)
+    const rHybSearch = await fetch(`${baseUrl}/api/hybrid/search?q=${encodeURIComponent('one piece')}&limit=8`);
+    const hybSearchJson = await rHybSearch.json();
+    assertTest(
+      'Endpoint /api/hybrid/search Menggabungkan MangaDex & MangaPill Secara Otomatis',
+      rHybSearch.status === 200 &&
+      hybSearchJson.success === true &&
+      Array.isArray(hybSearchJson.data) &&
+      hybSearchJson.data.length > 0 &&
+      hybSearchJson.data.some((m) => m.hasCompleteBackup === true || m.source === 'mangapill')
+    );
+
+    const onePieceDexId = 'a1c7c817-4e59-43b7-9365-09675a149a6f';
+    const rHybChapters = await fetch(`${baseUrl}/api/manga/${onePieceDexId}/chapters?lang=en,id&title=${encodeURIComponent('One Piece')}`);
+    const hybChaptersJson = await rHybChapters.json();
+    assertTest(
+      'Smart Hybrid Auto-Fill Menambal Chapter Bolong/Eksternal Secara Otomatis (One Piece > 1000 Chapter)',
+      rHybChapters.status === 200 &&
+      hybChaptersJson.success === true &&
+      hybChaptersJson.hybridMerged === true &&
+      hybChaptersJson.addedFromPill > 500 &&
+      Array.isArray(hybChaptersJson.data) &&
+      hybChaptersJson.data.length > 1000
+    );
+
+    const rHybFallback = await fetch(`${baseUrl}/api/hybrid/fallback-chapter?mangaId=${onePieceDexId}&mangaTitle=${encodeURIComponent('One Piece')}&chapter=1`);
+    const hybFallbackJson = await rHybFallback.json();
+    assertTest(
+      'Smart Reader Auto-Fallback (/api/hybrid/fallback-chapter) Berhasil Mengambil Halaman Cadangan',
+      rHybFallback.status === 200 &&
+      hybFallbackJson.success === true &&
+      Array.isArray(hybFallbackJson.data?.pages) &&
+      hybFallbackJson.data.pages.length > 0
+    );
+
+    assertTest(
+      'Mode Otomatis (Smart Hybrid) Menjadi Default di UI (#server-opt-auto, #mob-srv-auto, activeSource="auto")',
+      indexHtml.includes('id="server-opt-auto"') &&
+      indexHtml.includes('id="mob-srv-auto"') &&
+      appJsContent.includes("activeSource: 'auto'") &&
+      readerJsContent.includes('getFallbackChapterPages') &&
+      readerJsContent.includes('findAdjacentChapter')
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {

@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.0.9" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.0.9" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.1.0" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.1.0" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=1.0.9" />
-  <link rel="stylesheet" href="./css/reader.css?v=1.0.9" />
+  <link rel="stylesheet" href="./css/style.css?v=1.1.0" />
+  <link rel="stylesheet" href="./css/reader.css?v=1.1.0" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -240,27 +240,35 @@
           <i class="ri-sound-module-line"></i>
         </button>
         <!-- Server / Source Switcher Dropdown -->
-        <div class="server-selector" id="server-selector-wrap" title="Pilih Server Komik">
+        <div class="server-selector" id="server-selector-wrap" title="Mode Sumber Komik (Otomatis Gabung Server 1 & 2)">
           <button class="server-btn" id="server-menu-btn" onclick="app.toggleServerMenu()">
-            <i class="ri-server-line"></i>
-            <span id="current-server-label">MangaDex</span>
+            <i class="ri-sparkling-2-line"></i>
+            <span id="current-server-label">Otomatis</span>
             <i class="ri-arrow-down-s-line"></i>
           </button>
           <div class="server-dropdown" id="server-dropdown-menu">
-            <div class="server-dropdown-header">Pilih Sumber / Server Komik</div>
-            <div class="server-opt active" id="server-opt-mangadex" onclick="app.selectGlobalServer('mangadex')">
+            <div class="server-dropdown-header">Mode Sumber Komik</div>
+            <div class="server-opt active" id="server-opt-auto" onclick="app.selectGlobalServer('auto')">
+              <div class="server-opt-badge auto"><i class="ri-sparkling-2-fill"></i></div>
+              <div class="server-opt-body">
+                <div class="server-opt-title">Otomatis (Smart Hybrid)</div>
+                <div class="server-opt-desc">Gabung Server 1 &amp; 2 otomatis (Sub Indo + Chapter Komplit)</div>
+              </div>
+              <i class="ri-check-line server-check-icon"></i>
+            </div>
+            <div class="server-opt" id="server-opt-mangadex" onclick="app.selectGlobalServer('mangadex')">
               <div class="server-opt-badge"><i class="ri-fire-fill"></i></div>
               <div class="server-opt-body">
-                <div class="server-opt-title">Server 1: MangaDex</div>
-                <div class="server-opt-desc">Resmi, Bahasa Indonesia & English HD</div>
+                <div class="server-opt-title">Hanya Server 1: MangaDex</div>
+                <div class="server-opt-desc">Resmi, Bahasa Indonesia &amp; English HD</div>
               </div>
               <i class="ri-check-line server-check-icon"></i>
             </div>
             <div class="server-opt" id="server-opt-mangapill" onclick="app.selectGlobalServer('mangapill')">
               <div class="server-opt-badge pill"><i class="ri-archive-line"></i></div>
               <div class="server-opt-body">
-                <div class="server-opt-title">Server 2: MangaPill (Komplit)</div>
-                <div class="server-opt-desc">100% Chapter Lengkap (One Piece, JJK dll)</div>
+                <div class="server-opt-title">Hanya Server 2: MangaPill</div>
+                <div class="server-opt-desc">Arsip 100% Chapter Lengkap Saja</div>
               </div>
               <i class="ri-check-line server-check-icon"></i>
             </div>
@@ -348,11 +356,14 @@
 
       <!-- Quick Server Tabs in Mobile Search -->
       <div class="mobile-server-tabs" id="mobile-server-tabs">
-        <button class="mob-server-tab active" id="mob-srv-mangadex" onclick="app.selectGlobalServer('mangadex')">
-          <i class="ri-fire-fill"></i> Server 1: MangaDex
+        <button class="mob-server-tab active" id="mob-srv-auto" onclick="app.selectGlobalServer('auto')">
+          <i class="ri-sparkling-2-fill"></i> Otomatis (Gabung)
+        </button>
+        <button class="mob-server-tab" id="mob-srv-mangadex" onclick="app.selectGlobalServer('mangadex')">
+          <i class="ri-fire-fill"></i> MangaDex
         </button>
         <button class="mob-server-tab" id="mob-srv-mangapill" onclick="app.selectGlobalServer('mangapill')">
-          <i class="ri-archive-line"></i> Server 2: MangaPill (Komplit)
+          <i class="ri-archive-line"></i> MangaPill
         </button>
       </div>
 
@@ -1055,10 +1066,10 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=1.0.9"></script>
-  <script src="./js/api.js?v=1.0.9"></script>
-  <script src="./js/reader.js?v=1.0.9"></script>
-  <script src="./js/app.js?v=1.0.9"></script>
+  <script src="./js/state.js?v=1.1.0"></script>
+  <script src="./js/api.js?v=1.1.0"></script>
+  <script src="./js/reader.js?v=1.1.0"></script>
+  <script src="./js/app.js?v=1.1.0"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>

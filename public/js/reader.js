@@ -873,10 +873,40 @@ const Reader = {
     this.preloadedSet.clear();
 
     try {
-      const res = await Api.getChapterPages(chapterId);
+      let res;
+      let usedFallback = false;
+      try {
+        res = await Api.getChapterPages(chapterId);
+        if (!res || !res.success || !res.data || !res.data.pages || res.data.pages.length === 0) {
+          throw new Error('Chapter tidak memiliki halaman gambar atau server utama sedang limit.');
+        }
+      } catch (primaryErr) {
+        const chMeta = (this.allChapters || []).find((c) => c.id === chapterId);
+        const canFallback = !String(chapterId).startsWith('pill-') && this.manga?.title && chMeta?.chapter !== undefined;
+        if (!canFallback) throw primaryErr;
+
+        const fbRes = await Api.getFallbackChapterPages({
+          mangaId: this.manga.id,
+          mangaTitle: this.manga.title,
+          chapter: chMeta.chapter
+        });
+        if (!fbRes || !fbRes.success || !fbRes.data || !fbRes.data.pages || fbRes.data.pages.length === 0) {
+          throw primaryErr;
+        }
+        res = {
+          ...fbRes,
+          data: {
+            ...fbRes.data,
+            id: chapterId,
+            chapter: chMeta.chapter || fbRes.data.chapter
+          }
+        };
+        usedFallback = true;
+      }
+
       if (reqId !== this.loadRequestId || !this.active) return;
-      if (!res.success || !res.data || !res.data.pages || res.data.pages.length === 0) {
-        throw new Error('Chapter tidak memiliki halaman gambar atau server MangaDex sedang limit.');
+      if (usedFallback && typeof app !== 'undefined' && app.showToast) {
+        app.showToast('Server 1 sibuk — otomatis dialihkan ke Server Cadangan');
       }
 
       this.chapterData = res.data;
@@ -1068,6 +1098,42 @@ const Reader = {
     this.elements.progressLineFill.style.transform = `scaleX(${ratio.toFixed(4)})`;
   },
 
+  findAdjacentChapter(direction) {
+    if (!this.allChapters || !this.allChapters.length || !this.currentChapterId) return null;
+    const currentIndex = this.allChapters.findIndex((c) => c.id === this.currentChapterId);
+    if (currentIndex === -1) return null;
+
+    const currentCh = this.allChapters[currentIndex];
+    const currentNum = parseFloat(currentCh.chapter);
+    const step = direction > 0 ? -1 : 1; // allChapters is sorted descending (index 0 = newest)
+
+    let idx = currentIndex + step;
+    while (idx >= 0 && idx < this.allChapters.length) {
+      const cand = this.allChapters[idx];
+      const candNum = parseFloat(cand.chapter);
+      const isSameNum = !Number.isNaN(currentNum) && !Number.isNaN(candNum) && candNum === currentNum;
+      if (!isSameNum && !cand.isExternal) {
+        // Collect all chapters sharing this target chapter number so we prefer matching language
+        const sameTargetNumGroup = [cand];
+        let look = idx + step;
+        while (look >= 0 && look < this.allChapters.length) {
+          const nextCand = this.allChapters[look];
+          const nextNum = parseFloat(nextCand.chapter);
+          if (!Number.isNaN(candNum) && !Number.isNaN(nextNum) && nextNum === candNum) {
+            if (!nextCand.isExternal) sameTargetNumGroup.push(nextCand);
+            look += step;
+          } else {
+            break;
+          }
+        }
+        const preferred = sameTargetNumGroup.find((c) => c.language === currentCh.language);
+        return preferred || sameTargetNumGroup[0];
+      }
+      idx += step;
+    }
+    return null;
+  },
+
   prefetchNextChapterIfNearEnd() {
     if (!this.allChapters || !this.allChapters.length || !this.currentChapterId) return;
     if (typeof navigator !== 'undefined' && navigator.connection && navigator.connection.saveData) return;
@@ -1075,9 +1141,7 @@ const Reader = {
     const threshold = Math.max(2, Math.ceil((this.totalPages || 1) * 0.75));
     if (this.currentPage < threshold && this.totalPages > 2) return;
 
-    const currentIndex = this.allChapters.findIndex((c) => c.id === this.currentChapterId);
-    if (currentIndex <= 0) return; // index 0 is newest chapter in descending array
-    const nextChapter = this.allChapters[currentIndex - 1];
+    const nextChapter = this.findAdjacentChapter(1);
     if (!nextChapter || nextChapter.isExternal || this.prefetchedChapterId === nextChapter.id) return;
 
     this.prefetchedChapterId = nextChapter.id;
@@ -1172,12 +1236,8 @@ const Reader = {
   },
 
   navigateChapter(direction) {
-    const currentIndex = this.allChapters.findIndex((c) => c.id === this.currentChapterId);
-    if (currentIndex === -1) return;
-
-    const targetIndex = currentIndex - direction;
-    if (targetIndex >= 0 && targetIndex < this.allChapters.length) {
-      const targetChapter = this.allChapters[targetIndex];
+    const targetChapter = this.findAdjacentChapter(direction);
+    if (targetChapter) {
       this.loadChapter(targetChapter.id);
     } else {
       app.showToast(direction > 0 ? 'Sudah di chapter terbaru!' : 'Sudah di chapter terawal!');
