@@ -549,16 +549,16 @@ async function runComprehensiveQA() {
       styleCss.includes('progress.loading-spinner:indeterminate')
     );
 
-    // 9.10 Deep Bugfix Regression Suite (RTL Single-Page, XSS Toast, Apostrophe Titles, Reader Race Guard, Edge Headers)
+    // 9.10 Deep Bugfix Regression Suite (RTL Single-Page, XSS Toast, Reader Race Guard, HTML Anti-Stale Cache & Edge Headers)
     assertTest(
-      'Perbaikan Bug Mendalam Aktif (RTL Reader, Anti-XSS Toast, Title Apostrof, Race Guard & Edge Cache Proxy)',
+      'Perbaikan Bug Mendalam & Anti-Cache HTML Aktif (RTL Reader, Anti-XSS Toast, Race Guard, no-cache HTML & Edge Proxy)',
       (rHome.headers.get('permissions-policy') || '').includes('camera=()') &&
       (rHome.headers.get('cross-origin-opener-policy') || '') === 'same-origin-allow-popups' &&
+      (rHome.headers.get('cache-control') || '').includes('no-cache, no-store, must-revalidate') &&
       (rDexCover.headers.get('cache-control') || '').includes('s-maxage=86400') &&
       !readerCss.includes('.reader-single-view.direction-rtl .single-nav-btn.prev') &&
       readerJsContent.includes('loadRequestId') &&
       readerJsContent.includes('if (e.ctrlKey || e.metaKey || e.altKey) return') &&
-      appJsContent.includes('detail-complete-source-btn') &&
       appJsContent.includes('textSpan.textContent = String(message') &&
       appJsContent.includes('syncLangPrefUI()')
     );
@@ -617,10 +617,19 @@ async function runComprehensiveQA() {
     );
 
     assertTest(
-      'Mode Otomatis (Smart Hybrid) Menjadi Default di UI (#server-opt-auto, #mob-srv-auto, activeSource="auto")',
-      indexHtml.includes('id="server-opt-auto"') &&
-      indexHtml.includes('id="mob-srv-auto"') &&
-      appJsContent.includes("activeSource: 'auto'") &&
+      'UI v2.0.0: Tombol Pilih Server Dihapus Total, Motion-Graphic Auth Portal, Spring Easing & View Transitions Aktif',
+      !indexHtml.includes('id="server-selector-wrap"') &&
+      !indexHtml.includes('id="mobile-server-tabs"') &&
+      !appJsContent.includes('toggleServerMenu(') &&
+      !appJsContent.includes('switchSource(') &&
+      indexHtml.includes('class="auth-motion-visual"') &&
+      indexHtml.includes('id="auth-tabs-wrap"') &&
+      indexHtml.includes('id="reg-strength-meter"') &&
+      indexHtml.includes('id="auth-success-overlay"') &&
+      styleCss.includes('--spring-easing: linear(') &&
+      styleCss.includes('sibling-index()') &&
+      appJsContent.includes('startViewTransition') &&
+      appJsContent.includes('playAuthSuccessAndClose') &&
       readerJsContent.includes('getFallbackChapterPages') &&
       readerJsContent.includes('findAdjacentChapter')
     );

@@ -229,6 +229,7 @@ app.get('/', async (req, res, next) => {
       .replace(/<meta\s+name="twitter:image"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:image" content="${safeCover}" />`);
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     return res.status(200).send(html);
   } catch (_) {
     return next();
@@ -238,10 +239,8 @@ app.get('/', async (req, res, next) => {
 app.use(
   express.static(path.join(__dirname, 'public'), {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith('sw.js')) {
+      if (filePath.endsWith('sw.js') || filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      } else if (filePath.endsWith('.html')) {
-        res.setHeader('Cache-Control', 'public, max-age=0, s-maxage=120, must-revalidate');
       } else if (/\.(css|js|svg|json|png|jpg|webp|ico)$/i.test(filePath)) {
         res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800');
       }
@@ -1600,6 +1599,7 @@ app.get('/api/proxy/image', async (req, res) => {
 
 // Fallback SPA route (Express 5 compatible)
 app.use((req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

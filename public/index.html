@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=1.1.0" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=1.1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.0.0" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.0.0" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=1.1.0" />
-  <link rel="stylesheet" href="./css/reader.css?v=1.1.0" />
+  <link rel="stylesheet" href="./css/style.css?v=2.0.0" />
+  <link rel="stylesheet" href="./css/reader.css?v=2.0.0" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -221,7 +221,8 @@
       <div class="nav-search">
         <div class="search-input-wrapper">
           <i class="ri-search-line search-icon"></i>
-          <input type="text" id="global-search-input" placeholder="Cari judul manga, komik, atau author..." autocomplete="off" />
+          <input type="text" id="global-search-input" placeholder="Cari judul manga, manhwa, atau author..." autocomplete="off" />
+          <kbd class="search-kbd-hint" id="search-kbd-hint" aria-hidden="true">/</kbd>
           <button class="clear-btn" id="search-clear-btn" style="display: none;" onclick="app.clearSearch()">
             <i class="ri-close-line"></i>
           </button>
@@ -236,44 +237,12 @@
         <button class="btn-icon mobile-search-toggle" id="btn-mobile-search-toggle" title="Cari Manga" onclick="app.toggleMobileSearch()">
           <i class="ri-search-line"></i>
         </button>
+        <button class="btn-icon" id="btn-random-nav" title="Kejutan Rekomendasi Manga Acak" onclick="app.openRandomManga()">
+          <i class="ri-shuffle-line"></i>
+        </button>
         <button class="btn-icon" id="btn-filter-toggle" title="Filter Pencarian Detail" onclick="app.toggleFilterModal()">
           <i class="ri-sound-module-line"></i>
         </button>
-        <!-- Server / Source Switcher Dropdown -->
-        <div class="server-selector" id="server-selector-wrap" title="Mode Sumber Komik (Otomatis Gabung Server 1 & 2)">
-          <button class="server-btn" id="server-menu-btn" onclick="app.toggleServerMenu()">
-            <i class="ri-sparkling-2-line"></i>
-            <span id="current-server-label">Otomatis</span>
-            <i class="ri-arrow-down-s-line"></i>
-          </button>
-          <div class="server-dropdown" id="server-dropdown-menu">
-            <div class="server-dropdown-header">Mode Sumber Komik</div>
-            <div class="server-opt active" id="server-opt-auto" onclick="app.selectGlobalServer('auto')">
-              <div class="server-opt-badge auto"><i class="ri-sparkling-2-fill"></i></div>
-              <div class="server-opt-body">
-                <div class="server-opt-title">Otomatis (Smart Hybrid)</div>
-                <div class="server-opt-desc">Gabung Server 1 &amp; 2 otomatis (Sub Indo + Chapter Komplit)</div>
-              </div>
-              <i class="ri-check-line server-check-icon"></i>
-            </div>
-            <div class="server-opt" id="server-opt-mangadex" onclick="app.selectGlobalServer('mangadex')">
-              <div class="server-opt-badge"><i class="ri-fire-fill"></i></div>
-              <div class="server-opt-body">
-                <div class="server-opt-title">Hanya Server 1: MangaDex</div>
-                <div class="server-opt-desc">Resmi, Bahasa Indonesia &amp; English HD</div>
-              </div>
-              <i class="ri-check-line server-check-icon"></i>
-            </div>
-            <div class="server-opt" id="server-opt-mangapill" onclick="app.selectGlobalServer('mangapill')">
-              <div class="server-opt-badge pill"><i class="ri-archive-line"></i></div>
-              <div class="server-opt-body">
-                <div class="server-opt-title">Hanya Server 2: MangaPill</div>
-                <div class="server-opt-desc">Arsip 100% Chapter Lengkap Saja</div>
-              </div>
-              <i class="ri-check-line server-check-icon"></i>
-            </div>
-          </div>
-        </div>
 
         <div class="lang-selector" title="Bahasa Chapter">
           <button class="lang-btn" id="lang-menu-btn" onclick="app.toggleLangMenu()">
@@ -351,19 +320,6 @@
         </div>
         <button class="btn-icon mobile-search-close-btn" onclick="app.toggleMobileSearch(false)" title="Tutup">
           <i class="ri-close-line"></i>
-        </button>
-      </div>
-
-      <!-- Quick Server Tabs in Mobile Search -->
-      <div class="mobile-server-tabs" id="mobile-server-tabs">
-        <button class="mob-server-tab active" id="mob-srv-auto" onclick="app.selectGlobalServer('auto')">
-          <i class="ri-sparkling-2-fill"></i> Otomatis (Gabung)
-        </button>
-        <button class="mob-server-tab" id="mob-srv-mangadex" onclick="app.selectGlobalServer('mangadex')">
-          <i class="ri-fire-fill"></i> MangaDex
-        </button>
-        <button class="mob-server-tab" id="mob-srv-mangapill" onclick="app.selectGlobalServer('mangapill')">
-          <i class="ri-archive-line"></i> MangaPill
         </button>
       </div>
 
@@ -529,7 +485,7 @@
         <button type="button" class="footer-link-btn" onclick="app.navigate('history')">Riwayat</button>
       </div>
       <div class="footer-meta-col">
-        <span class="footer-status-pill"><span class="footer-status-dot"></span> Server 1 &amp; 2 Online</span>
+        <span class="footer-status-pill"><span class="footer-status-dot"></span> Smart Hybrid Engine Aktif</span>
         <span class="footer-copy">&copy; MangaFlow Ultra</span>
       </div>
     </div>
@@ -902,32 +858,76 @@
     </div>
   </div>
 
-  <!-- Authentication Modal (Login / Register) -->
+  <!-- Authentication Modal (Login / Register with Motion Graphic Portal) -->
   <div class="modal-backdrop" id="auth-modal" style="display: none;" onclick="if(event.target === this) app.toggleAuthModal(false)">
-    <div class="modal-box auth-modal-box">
-      <div class="modal-header">
-        <div class="modal-title">
-          <i class="ri-user-heart-line" style="color: var(--accent-primary);"></i>
-          <h3 id="auth-modal-title">Akun MangaFlow</h3>
+    <div class="modal-box auth-modal-box" id="auth-modal-box">
+      <!-- Motion Graphic Nebula Header -->
+      <div class="auth-motion-visual">
+        <div class="auth-aurora-bg" aria-hidden="true"></div>
+        <span class="auth-spark spark-1" aria-hidden="true"></span>
+        <span class="auth-spark spark-2" aria-hidden="true"></span>
+        <span class="auth-spark spark-3" aria-hidden="true"></span>
+        <span class="auth-spark spark-4" aria-hidden="true"></span>
+
+        <button type="button" class="modal-close auth-floating-close" aria-label="Tutup modal akun" onclick="app.toggleAuthModal(false)">
+          <i class="ri-close-line"></i>
+        </button>
+
+        <div class="auth-emblem-stage" aria-hidden="true">
+          <div class="auth-orbit-ring ring-outer"></div>
+          <div class="auth-orbit-ring ring-inner"></div>
+          <div class="auth-emblem-core">
+            <svg viewBox="0 0 64 64" width="46" height="46">
+              <defs>
+                <linearGradient id="mfAuthBg" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#1e2440" />
+                  <stop offset="100%" stop-color="#0b0e1a" />
+                </linearGradient>
+                <linearGradient id="mfAuthLeft" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#38bdf8" />
+                  <stop offset="55%" stop-color="#6366f1" />
+                  <stop offset="100%" stop-color="#8b5cf6" />
+                </linearGradient>
+                <linearGradient id="mfAuthRight" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#818cf8" />
+                  <stop offset="55%" stop-color="#a855f7" />
+                  <stop offset="100%" stop-color="#ec4899" />
+                </linearGradient>
+              </defs>
+              <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#mfAuthBg)" stroke="#818cf8" stroke-opacity="0.65" stroke-width="1.8" />
+              <path d="M12 20.5 C12 18.2 13.8 16.7 16 17.2 C22.5 18.6 27.8 21.8 31.2 26.2 L31.2 47.4 C27.2 43.4 21.6 41.2 14.8 41.4 C13.2 41.4 12 40.2 12 38.6 Z" fill="url(#mfAuthLeft)" />
+              <path d="M52 20.5 C52 18.2 50.2 16.7 48 17.2 C41.5 18.6 36.2 21.8 32.8 26.2 L32.8 47.4 C36.8 43.4 42.4 41.2 49.2 41.4 C50.8 41.4 52 40.2 52 38.6 Z" fill="url(#mfAuthRight)" />
+              <path d="M32 24.5 L33.4 26.6 L33.4 48.2 L32 49.4 L30.6 48.2 L30.6 26.6 Z" fill="#f8fafc" opacity="0.95" />
+              <path d="M48.5 9.5 L49.8 12.7 L53 14 L49.8 15.3 L48.5 18.5 L47.2 15.3 L44 14 L47.2 12.7 Z" fill="#e0f2fe" />
+            </svg>
+          </div>
         </div>
-        <button class="modal-close" onclick="app.toggleAuthModal(false)"><i class="ri-close-line"></i></button>
+
+        <h3 class="auth-hero-title" id="auth-modal-title">Masuk ke MangaFlow</h3>
+        <p class="auth-hero-caption" id="auth-modal-subtitle">Sinkronisasi favorit, progres halaman &amp; riwayat baca di semua perangkat.</p>
       </div>
 
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tab-login" onclick="app.switchAuthTab('login')">
+      <!-- Sliding Spring Pill Tabs -->
+      <div class="auth-tabs" id="auth-tabs-wrap" data-active-tab="login">
+        <div class="auth-tab-glider" aria-hidden="true"></div>
+        <button type="button" class="auth-tab active" id="tab-login" onclick="app.switchAuthTab('login')">
           <i class="ri-login-box-line"></i> Masuk
         </button>
-        <button class="auth-tab" id="tab-register" onclick="app.switchAuthTab('register')">
+        <button type="button" class="auth-tab" id="tab-register" onclick="app.switchAuthTab('register')">
           <i class="ri-user-add-line"></i> Buat Akun
         </button>
       </div>
 
+      <!-- Inline Error Alert -->
+      <div class="auth-error-banner" id="auth-error-banner" role="alert" style="display: none;">
+        <i class="ri-error-warning-fill"></i>
+        <span id="auth-error-text"></span>
+      </div>
+
       <!-- Login Form -->
       <form class="auth-form" id="form-login" onsubmit="app.handleLoginSubmit(event)">
-        <p class="auth-subtitle">Masuk untuk menyinkronkan komik favorit dan riwayat baca Anda ke cloud.</p>
-        
         <div class="form-group">
-          <label class="form-label">Username atau Email</label>
+          <label class="form-label" for="login-identifier">Username atau Email</label>
           <div class="form-input-wrap">
             <i class="ri-user-line form-icon"></i>
             <input type="text" id="login-identifier" class="form-input" placeholder="contoh: otaku123 atau email@kamu.com" required autocomplete="username" />
@@ -935,14 +935,20 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Kata Sandi</label>
+          <label class="form-label" for="login-password">Kata Sandi</label>
           <div class="form-input-wrap">
             <i class="ri-lock-line form-icon"></i>
             <input type="password" id="login-password" class="form-input" placeholder="Masukkan kata sandi..." required autocomplete="current-password" />
-            <button type="button" class="eye-toggle-btn" onclick="app.togglePasswordVisibility('login-password', this)">
+            <button type="button" class="eye-toggle-btn" aria-label="Tampilkan kata sandi" onclick="app.togglePasswordVisibility('login-password', this)">
               <i class="ri-eye-line"></i>
             </button>
           </div>
+        </div>
+
+        <div class="auth-perks-strip">
+          <span><i class="ri-cloud-line"></i> Cloud Sync</span>
+          <span><i class="ri-bookmark-3-line"></i> Favorit Aman</span>
+          <span><i class="ri-history-line"></i> Auto-Resume</span>
         </div>
 
         <button type="submit" class="btn btn-primary auth-submit-btn" id="login-submit-btn">
@@ -953,10 +959,8 @@
 
       <!-- Register Form -->
       <form class="auth-form" id="form-register" style="display: none;" onsubmit="app.handleRegisterSubmit(event)">
-        <p class="auth-subtitle">Daftar akun gratis dalam 5 detik. Favorit dan riwayat Anda tersimpan aman selamanya.</p>
-
         <div class="form-group">
-          <label class="form-label">Username</label>
+          <label class="form-label" for="reg-username">Username</label>
           <div class="form-input-wrap">
             <i class="ri-at-line form-icon"></i>
             <input type="text" id="reg-username" class="form-input" placeholder="minimal 3 karakter" required minlength="3" autocomplete="username" />
@@ -964,7 +968,7 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Alamat Email</label>
+          <label class="form-label" for="reg-email">Alamat Email</label>
           <div class="form-input-wrap">
             <i class="ri-mail-line form-icon"></i>
             <input type="email" id="reg-email" class="form-input" placeholder="email@kamu.com" required autocomplete="email" />
@@ -972,13 +976,19 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">Kata Sandi</label>
+          <label class="form-label" for="reg-password">Kata Sandi</label>
           <div class="form-input-wrap">
             <i class="ri-lock-password-line form-icon"></i>
-            <input type="password" id="reg-password" class="form-input" placeholder="minimal 6 karakter" required minlength="6" autocomplete="new-password" />
-            <button type="button" class="eye-toggle-btn" onclick="app.togglePasswordVisibility('reg-password', this)">
+            <input type="password" id="reg-password" class="form-input" placeholder="minimal 6 karakter" required minlength="6" autocomplete="new-password" oninput="app.updatePasswordStrength(this.value)" />
+            <button type="button" class="eye-toggle-btn" aria-label="Tampilkan kata sandi" onclick="app.togglePasswordVisibility('reg-password', this)">
               <i class="ri-eye-line"></i>
             </button>
+          </div>
+          <div class="pw-strength-wrap" id="reg-strength-wrap">
+            <div class="pw-strength-meter" id="reg-strength-meter" data-score="0" aria-hidden="true">
+              <span></span><span></span><span></span><span></span>
+            </div>
+            <span class="pw-strength-label" id="reg-strength-label">Kekuatan sandi: Minimal 6 karakter</span>
           </div>
         </div>
 
@@ -987,6 +997,15 @@
           <i class="ri-sparkling-fill"></i>
         </button>
       </form>
+
+      <!-- Celebratory Success Motion Burst Overlay -->
+      <div class="auth-success-overlay" id="auth-success-overlay" style="display: none;" aria-live="polite">
+        <div class="auth-success-ring">
+          <i class="ri-check-line"></i>
+        </div>
+        <h4 class="auth-success-title" id="auth-success-title">Berhasil Masuk!</h4>
+        <p class="auth-success-sub" id="auth-success-sub">Menyiapkan koleksi manga Anda...</p>
+      </div>
     </div>
   </div>
 
@@ -1066,13 +1085,20 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=1.1.0"></script>
-  <script src="./js/api.js?v=1.1.0"></script>
-  <script src="./js/reader.js?v=1.1.0"></script>
-  <script src="./js/app.js?v=1.1.0"></script>
+  <script src="./js/state.js?v=2.0.0"></script>
+  <script src="./js/api.js?v=2.0.0"></script>
+  <script src="./js/reader.js?v=2.0.0"></script>
+  <script src="./js/app.js?v=2.0.0"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
+    if ('caches' in window) {
+      caches.keys().then((keys) => {
+        keys.forEach((k) => {
+          if (k.startsWith('mangaflow-v1.')) caches.delete(k);
+        });
+      }).catch(() => {});
+    }
     if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
       window.addEventListener('load', () => {
         const hadController = Boolean(navigator.serviceWorker.controller);

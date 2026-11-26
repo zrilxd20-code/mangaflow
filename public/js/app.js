@@ -93,17 +93,26 @@ const app = {
     const searchInput = document.getElementById('global-search-input');
     const searchDropdown = document.getElementById('quick-search-results');
     const clearBtn = document.getElementById('search-clear-btn');
+    const kbdHint = document.getElementById('search-kbd-hint');
 
     if (searchInput) {
       searchInput.addEventListener('focus', () => {
+        if (kbdHint) kbdHint.style.display = 'none';
         if (!searchInput.value.trim()) {
           this.renderRecentSearchSuggestions('quick-search-results');
+        }
+      });
+
+      searchInput.addEventListener('blur', () => {
+        if (kbdHint && !searchInput.value.trim()) {
+          kbdHint.style.display = '';
         }
       });
 
       searchInput.addEventListener('input', (e) => {
         const q = e.target.value.trim();
         if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
+        if (kbdHint) kbdHint.style.display = 'none';
 
         clearTimeout(this.searchTimeout);
         if (!q) {
@@ -175,10 +184,6 @@ const app = {
       if (!e.target.closest('.mobile-search-bar') && !e.target.closest('#btn-mobile-search-toggle') && !e.target.closest('#mob-nav-search')) {
         const mobDd = document.getElementById('mobile-quick-search-results');
         if (mobDd) mobDd.classList.remove('open');
-      }
-      if (!e.target.closest('#server-selector-wrap')) {
-        const sm = document.getElementById('server-dropdown-menu');
-        if (sm) sm.classList.remove('open');
       }
       if (!e.target.closest('.lang-selector')) {
         const lm = document.getElementById('lang-dropdown-menu');
@@ -400,42 +405,78 @@ const app = {
       }
     }
 
-    // Update active nav links
-    document.querySelectorAll('.nav-link, .mobile-nav-item, .mob-tab-btn').forEach((el) => {
-      el.classList.remove('active');
-    });
+    const performViewSwitch = () => {
+      // Update active nav links
+      document.querySelectorAll('.nav-link, .mobile-nav-item, .mob-tab-btn').forEach((el) => {
+        el.classList.remove('active');
+      });
 
-    const activeNavBtn = document.getElementById(`nav-${viewName}`);
-    const activeMobBtn = document.getElementById(`mob-nav-${viewName}`);
-    const activeMobTopBtn = document.getElementById(`mob-top-${viewName}`);
-    if (activeNavBtn) activeNavBtn.classList.add('active');
-    if (activeMobBtn) activeMobBtn.classList.add('active');
-    if (activeMobTopBtn) activeMobTopBtn.classList.add('active');
+      const activeNavBtn = document.getElementById(`nav-${viewName}`);
+      const activeMobBtn = document.getElementById(`mob-nav-${viewName}`);
+      const activeMobTopBtn = document.getElementById(`mob-top-${viewName}`);
+      if (activeNavBtn) activeNavBtn.classList.add('active');
+      if (activeMobBtn) activeMobBtn.classList.add('active');
+      if (activeMobTopBtn) activeMobTopBtn.classList.add('active');
 
-    // Hide all view sections
-    document.querySelectorAll('.view-section').forEach((el) => {
-      el.style.display = 'none';
-    });
+      // Hide all view sections
+      document.querySelectorAll('.view-section').forEach((el) => {
+        el.style.display = 'none';
+      });
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    this.syncDocumentTitle();
+      const reduceMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+      this.syncDocumentTitle();
 
-    if (viewName === 'home') {
-      document.getElementById('home-view').style.display = 'block';
-      this.renderContinueReading();
-    } else if (viewName === 'latest') {
-      this.showTopLoader();
-      this.renderLatestView().finally(() => this.finishTopLoader());
-    } else if (viewName === 'library') {
-      this.renderLibraryView();
-    } else if (viewName === 'history') {
-      this.renderHistoryView();
-    } else if (viewName === 'manga') {
-      this.showTopLoader();
-      this.renderMangaDetailView(params.id).finally(() => this.finishTopLoader());
-    } else if (viewName === 'search') {
-      this.showTopLoader();
-      this.renderSearchView(params).finally(() => this.finishTopLoader());
+      if (viewName === 'home') {
+        document.getElementById('home-view').style.display = 'block';
+        this.renderContinueReading();
+      } else if (viewName === 'latest') {
+        this.showTopLoader();
+        this.renderLatestView().finally(() => this.finishTopLoader());
+      } else if (viewName === 'library') {
+        this.renderLibraryView();
+      } else if (viewName === 'history') {
+        this.renderHistoryView();
+      } else if (viewName === 'manga') {
+        this.showTopLoader();
+        this.renderMangaDetailView(params.id).finally(() => this.finishTopLoader());
+      } else if (viewName === 'search') {
+        this.showTopLoader();
+        this.renderSearchView(params).finally(() => this.finishTopLoader());
+      }
+    };
+
+    const canViewTransition =
+      this.splashDismissed &&
+      typeof document !== 'undefined' &&
+      typeof document.startViewTransition === 'function' &&
+      !(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+    if (!canViewTransition) {
+      performViewSwitch();
+      if (this.splashDismissed) {
+        document.getElementById('app-viewport')?.focus({ preventScroll: true });
+      }
+      return;
+    }
+
+    try {
+      const transition = document.startViewTransition(() => performViewSwitch());
+      transition.finished.finally(() => {
+        document.getElementById('app-viewport')?.focus({ preventScroll: true });
+      });
+    } catch (_) {
+      performViewSwitch();
+      document.getElementById('app-viewport')?.focus({ preventScroll: true });
+    }
+  },
+
+  applyGridStagger(gridEl) {
+    if (!gridEl) return;
+    if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function' || !CSS.supports('animation-delay: calc(sibling-index() * 0.04s)')) {
+      Array.from(gridEl.children).forEach((el, index) => {
+        el.style.setProperty('--sibling-index', String(Math.min(index + 1, 16)));
+      });
     }
   },
 
@@ -482,6 +523,7 @@ const app = {
 
     this.heroItemsCount = items.length;
     this.heroIndex = 0;
+    container.classList.toggle('is-paused', Boolean(this.heroPaused));
     container.innerHTML = '';
 
     items.forEach((item, index) => {
@@ -503,7 +545,10 @@ const app = {
         <div class="hero-content">
           <img class="hero-poster" src="${this.escapeHtml(smallCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" ${priorityAttr} onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
           <div class="hero-details">
-            <div class="hero-tag-list">${tagsHtml}</div>
+            <div class="hero-tag-list">
+              <span class="hero-rank-pill"><i class="ri-fire-fill"></i> #${index + 1} Trending</span>
+              ${tagsHtml}
+            </div>
             <h1 class="hero-title">${this.escapeHtml(item.title)}</h1>
             <p class="hero-synopsis">${this.escapeHtml((item.description || '').replace(/\[\/?\w+\]/g, ''))}</p>
             <div class="hero-actions">
@@ -569,6 +614,10 @@ const app = {
 
   toggleHeroPause() {
     this.heroPaused = !this.heroPaused;
+    const container = document.getElementById('hero-container');
+    if (container) {
+      container.classList.toggle('is-paused', this.heroPaused);
+    }
     const btn = document.getElementById('hero-pause-btn');
     if (btn) {
       const label = this.heroPaused ? 'Putar slide otomatis' : 'Jeda slide otomatis';
@@ -596,10 +645,11 @@ const app = {
     const grid = document.getElementById('trending-grid');
     grid.innerHTML = '';
 
-    items.forEach((item) => {
-      const card = this.createMangaCard(item);
+    items.forEach((item, index) => {
+      const card = this.createMangaCard(item, index + 1);
       grid.appendChild(card);
     });
+    this.applyGridStagger(grid);
   },
 
   // ---------------- Latest Updates ----------------
@@ -616,6 +666,7 @@ const app = {
         const card = this.createMangaCard(item);
         grid.appendChild(card);
       });
+      this.applyGridStagger(grid);
     } catch (err) {
       console.error('Failed to load latest:', err);
       const grid = document.getElementById('latest-grid');
@@ -664,6 +715,7 @@ const app = {
           const card = this.createMangaCard(item);
           grid.appendChild(card);
         });
+        this.applyGridStagger(grid);
 
         // Pagination buttons
         const pagination = document.getElementById('latest-pagination');
@@ -698,7 +750,7 @@ const app = {
   },
 
   // ---------------- Manga Card Builder ----------------
-  createMangaCard(item) {
+  createMangaCard(item, rank = null) {
     const card = document.createElement('div');
     card.className = 'manga-card';
     card.onclick = () => this.navigate('manga', { id: item.id });
@@ -712,10 +764,14 @@ const app = {
     const isHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
     const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
     const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
+    const rankRibbonHtml = Number.isInteger(rank) && rank >= 1 && rank <= 10
+      ? `<span class="card-rank-ribbon rank-${rank <= 3 ? rank : 'top'}" aria-label="Peringkat ${rank}">#${rank}</span>`
+      : '';
 
     card.innerHTML = `
       <div class="card-cover-wrap">
         <img class="card-cover" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" loading="lazy" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
+        ${rankRibbonHtml}
         <div class="card-badges">
           ${isPill ? `
             <span class="card-badge" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; font-weight: 700;">
@@ -810,10 +866,9 @@ const app = {
     `;
 
     try {
-      const useHybridChapters = this.activeSource !== 'mangadex';
       const [mangaRes, chaptersRes, socialRes] = await Promise.all([
         Api.getManga(mangaId),
-        Api.getChapters(mangaId, State.settings.languages.join(','), 'desc', { hybrid: useHybridChapters }),
+        Api.getChapters(mangaId, State.settings.languages.join(','), 'desc', { hybrid: true }),
         Api.getMangaSocial(mangaId).catch(() => ({
           success: true,
           data: { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] }
@@ -927,11 +982,6 @@ const app = {
                   <button class="btn btn-primary" id="detail-read-first-btn">
                     <i class="ri-book-open-line"></i> Baca Chapter Pertama
                   </button>
-                  ${!isPill ? `
-                  <button type="button" class="btn btn-secondary" id="detail-complete-source-btn">
-                    <i class="ri-archive-line"></i> ${hybridMerged ? 'Lihat Versi Arsip Saja' : 'Buka di Server Komplit'}
-                  </button>
-                  ` : ''}
                   <button class="btn btn-secondary" id="detail-bookmark-btn" onclick="app.toggleBookmarkDetail('${this.escapeHtml(manga.id)}')">
                     <i class="${isFav ? 'ri-bookmark-fill' : 'ri-bookmark-line'}"></i>
                     <span>${isFav ? 'Tersimpan di Favorit' : 'Tambah ke Favorit'}</span>
@@ -1021,12 +1071,6 @@ const app = {
           const readable = chapters.filter((c) => !c.isExternal);
           Reader.open(manga, lastReadEntry.chapterId, readable.length > 0 ? readable : chapters);
         };
-      }
-
-      // Bind Complete Source button programmatically so titles with apostrophes (e.g. JoJo's) never break JS
-      const completeSrcBtn = document.getElementById('detail-complete-source-btn');
-      if (completeSrcBtn) {
-        completeSrcBtn.onclick = () => this.findCompleteSource(manga.title);
       }
 
       // Read first chapter button logic (always picks earliest chapter regardless of current sort order)
@@ -1267,6 +1311,7 @@ const app = {
       const card = this.createMangaCard(item);
       grid.appendChild(card);
     });
+    this.applyGridStagger(grid);
   },
 
   // ---------------- History View ----------------
@@ -1361,23 +1406,7 @@ const app = {
     }
   },
 
-  // ---------------- Search & Filter View ----------------
-  switchSource(src) {
-    this.syncServerUI(src);
-    const pageInput = document.getElementById('search-page-input');
-    const q = pageInput ? pageInput.value.trim() : '';
-    this.renderSearchView({ q });
-  },
-
-  findCompleteSource(mangaTitle) {
-    this.syncServerUI('mangapill');
-    let cleanTitle = String(mangaTitle || '');
-    try {
-      cleanTitle = decodeURIComponent(cleanTitle);
-    } catch (_) {}
-    this.navigate('search', { q: cleanTitle });
-  },
-
+  // ---------------- Search & Filter View (100% Unified Smart Hybrid Engine) ----------------
   async performSearch(q) {
     if (q && q.trim()) {
       State.addRecentSearch(q.trim());
@@ -1400,8 +1429,6 @@ const app = {
       this.selectedStatus = params.status;
     }
 
-    const isAuto = this.activeSource === 'auto';
-    const isPill = this.activeSource === 'mangapill';
     const currentQ = params.q || '';
     if (currentQ.trim()) {
       State.addRecentSearch(currentQ.trim());
@@ -1415,42 +1442,27 @@ const app = {
     view.innerHTML = `
       <div class="section-container">
         <!-- Prominent Mobile & Desktop Search Bar -->
-        <div class="search-page-bar" style="margin-bottom: 16px;">
-          <div class="search-input-wrapper" style="max-width: 600px; margin: 0 auto;">
+        <div class="search-page-bar" style="margin-bottom: 18px;">
+          <div class="search-input-wrapper" style="max-width: 640px; margin: 0 auto;">
             <i class="ri-search-line search-icon"></i>
-            <input type="text" id="search-page-input" value="${safeQ}" placeholder="${isPill ? 'Cari di Server Komplit (misal: One Piece, Naruto, Bleach)...' : 'Cari judul komik, manhwa, atau author (Otomatis Gabung Server 1 & 2)...'}" />
+            <input type="text" id="search-page-input" value="${safeQ}" placeholder="Cari judul manga, manhwa, atau author..." />
             ${currentQ ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
           </div>
         </div>
 
-        <!-- Server Selector Bar -->
-        <div class="source-selector-bar" style="display: flex; justify-content: center; gap: 10px; margin-bottom: 24px; flex-wrap: wrap;">
-          <button class="btn btn-sm ${isAuto ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 18px; font-size: 0.85rem;" onclick="app.switchSource('auto')">
-            <i class="ri-sparkling-2-fill"></i> Otomatis (Gabung Server 1 & 2)
-          </button>
-          <button class="btn btn-sm ${this.activeSource === 'mangadex' ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.switchSource('mangadex')">
-            <i class="ri-fire-fill"></i> MangaDex Saja
-          </button>
-          <button class="btn btn-sm ${isPill ? 'btn-primary' : 'btn-secondary'}" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.switchSource('mangapill')">
-            <i class="ri-archive-line"></i> MangaPill Saja
-          </button>
-          <button type="button" class="btn btn-sm btn-secondary random-discover-btn" style="border-radius: var(--radius-full); padding: 7px 16px; font-size: 0.85rem;" onclick="app.openRandomManga()">
-            <i class="ri-shuffle-line"></i> Kejutan Acak
-          </button>
-        </div>
-
-        <div class="section-header">
+        <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
           <div class="section-title-wrap">
-            <i class="${isPill ? 'ri-archive-line' : (isAuto ? 'ri-sparkling-2-fill' : 'ri-search-line')} title-icon"></i>
-            <h2>${currentQ ? `Hasil: "${safeQ}"` : (isPill ? 'Server Komplit (MangaPill)' : (isAuto ? 'Jelajahi & Cari (Mode Hybrid Otomatis)' : 'Jelajahi & Cari (MangaDex)'))}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
+            <i class="ri-sparkling-2-fill title-icon"></i>
+            <h2>${currentQ ? `Hasil Pencarian: "${safeQ}"` : 'Jelajahi Katalog Manga'}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
           </div>
-          ${!isPill ? `
-          <button class="btn btn-secondary" onclick="app.toggleFilterModal()">
-            <i class="ri-sound-module-line"></i> Filter & Opsi
-          </button>
-          ` : `
-          <span style="font-size: 0.82rem; color: #10b981; font-weight: 600;"><i class="ri-check-double-line"></i> Semua chapter dapat dibaca langsung</span>
-          `}
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary btn-sm random-discover-btn" onclick="app.openRandomManga()">
+              <i class="ri-shuffle-line"></i> Kejutan Acak
+            </button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="app.toggleFilterModal()">
+              <i class="ri-sound-module-line"></i> Filter & Opsi
+            </button>
+          </div>
         </div>
         <div class="manga-grid" id="search-results-grid">
           <div class="manga-card skeleton-card"></div>
@@ -1479,22 +1491,14 @@ const app = {
     const { signal } = this.searchViewAbort;
 
     try {
-      let res;
-      if (this.activeSource === 'mangapill') {
-        const queryText = params.q || 'one piece';
-        res = await Api.searchMangaPill(queryText, page, signal);
-      } else {
-        const queryParams = {
-          q: params.q || '',
-          sort: this.selectedSort,
-          status: this.selectedStatus,
-          tags: Array.from(this.selectedFilterTags).join(','),
-          page
-        };
-        res = this.activeSource === 'auto'
-          ? await Api.searchHybrid(queryParams, signal)
-          : await Api.search(queryParams, signal);
-      }
+      const queryParams = {
+        q: params.q || '',
+        sort: this.selectedSort,
+        status: this.selectedStatus,
+        tags: Array.from(this.selectedFilterTags).join(','),
+        page
+      };
+      const res = await Api.searchHybrid(queryParams, signal);
 
       if (signal.aborted) return;
 
@@ -1515,13 +1519,12 @@ const app = {
           const card = this.createMangaCard(item);
           grid.appendChild(card);
         });
+        this.applyGridStagger(grid);
       }
 
       if (pagination && ((res.data && res.data.length > 0) || page > 1)) {
         pagination.innerHTML = '';
-        const hasNext = isPill
-          ? (res.data && res.data.length >= 20)
-          : (page * 24 < (res.total || 0) || (res.data && res.data.length === 24));
+        const hasNext = page * 24 < (res.total || 0) || (res.data && res.data.length === 24);
 
         const navBase = {
           q: currentQ,
@@ -1562,12 +1565,10 @@ const app = {
           <div style="grid-column: 1 / -1; text-align: center; padding: 52px 0; color: var(--text-muted);">
             <i class="ri-error-warning-line" style="font-size: 2.8rem; color: var(--danger); display: block; margin-bottom: 10px;"></i>
             <h3 style="color: var(--text-main); margin-bottom: 6px;">Gagal Memuat Hasil Pencarian</h3>
-            <p style="margin-bottom: 16px;">${this.escapeHtml(err.message || 'Server sedang sibuk atau koneksi terganggu.')}</p>
+            <p style="margin-bottom: 16px;">${this.escapeHtml(err.message || 'Koneksi sedang sibuk, silakan coba lagi.')}</p>
             <div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap;">
               <button type="button" class="btn btn-primary btn-sm" id="search-retry-btn"><i class="ri-refresh-line"></i> Coba Lagi</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="app.switchSource('${isPill ? 'mangadex' : 'mangapill'}')">
-                Ganti ke ${isPill ? 'Server 1 (MangaDex)' : 'Server 2 (MangaPill)'}
-              </button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="app.openRandomManga()"><i class="ri-shuffle-line"></i> Kejutan Acak</button>
             </div>
           </div>
         `;
@@ -1587,45 +1588,29 @@ const app = {
 
     const dropdown = document.getElementById(targetId);
     if (dropdown) {
-      const serverLabel = this.activeSource === 'mangapill'
-        ? 'Server 2 (MangaPill)'
-        : (this.activeSource === 'mangadex' ? 'Server 1 (MangaDex)' : 'Semua Server (Otomatis)');
       dropdown.innerHTML = `
         <div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:18px 12px;color:var(--text-muted);font-size:0.86rem;">
           <progress aria-label="Mencari" class="loading-spinner" style="--size:22px;--thickness:2.5px;"></progress>
-          <span>Mencari "<strong>${this.escapeHtml(q)}</strong>" di ${serverLabel}...</span>
+          <span>Mencari "<strong>${this.escapeHtml(q)}</strong>"...</span>
         </div>
       `;
       dropdown.classList.add('open');
     }
 
     try {
-      let items = [];
-      if (this.activeSource === 'mangapill') {
-        const res = await Api.searchMangaPill(q, 1, signal);
-        items = (res.data || []).slice(0, 7);
-      } else if (this.activeSource === 'auto') {
-        const res = await Api.searchHybrid({ q, limit: 8 }, signal);
-        items = (res.data || []).slice(0, 8);
-      } else {
-        const res = await Api.search({ q, limit: 7 }, signal);
-        items = (res.data || []).slice(0, 7);
-      }
+      const res = await Api.searchHybrid({ q, limit: 8 }, signal);
+      const items = (res.data || []).slice(0, 8);
       if (signal.aborted) return;
       this.renderQuickSearchDropdown(items, targetId, q);
     } catch (err) {
       if (err.name === 'AbortError') return;
       console.error('Quick search error:', err);
       if (dropdown) {
-        const isPill = this.activeSource === 'mangapill';
         dropdown.innerHTML = `
           <div style="padding:14px 12px;text-align:center;color:var(--text-muted);font-size:0.84rem;">
             <div style="margin-bottom:8px;color:#fca5a5;"><i class="ri-error-warning-line"></i> Pencarian gagal dimuat.</div>
             <div style="display:flex;justify-content:center;gap:8px;flex-wrap:wrap;">
-              <button type="button" class="btn btn-sm btn-primary" style="padding:4px 10px;font-size:0.76rem;" id="qs-retry-btn">Coba Lagi</button>
-              <button type="button" class="btn btn-sm btn-secondary" style="padding:4px 10px;font-size:0.76rem;" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
-                Coba ${isPill ? 'Server 1' : 'Server 2'}
-              </button>
+              <button type="button" class="btn btn-sm btn-primary" style="padding:4px 12px;font-size:0.76rem;" id="qs-retry-btn">Coba Lagi</button>
             </div>
           </div>
         `;
@@ -1646,35 +1631,20 @@ const app = {
     if (!dropdown) return;
     dropdown.innerHTML = '';
 
-    const isAuto = this.activeSource === 'auto';
-    const isPill = this.activeSource === 'mangapill';
-    const modeText = isAuto
-      ? '✨ Mode Otomatis: Gabungan Server 1 & 2'
-      : (isPill ? '🟢 Mode Manual: Server 2 (MangaPill)' : '🔥 Mode Manual: Server 1 (MangaDex)');
-
-    // Header bar inside quick dropdown showing active server & toggle
     const headerEl = document.createElement('div');
     headerEl.className = 'quick-search-header-bar';
     headerEl.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 6px 10px 8px 10px; border-bottom: 1px solid var(--border-subtle); margin-bottom: 6px;';
     headerEl.innerHTML = `
-      <span style="font-size: 0.76rem; color: var(--text-dim); font-weight: 600;">
-        ${modeText}
+      <span style="font-size: 0.75rem; color: #a5b4fc; font-weight: 600;">
+        <i class="ri-sparkling-2-fill"></i> Smart Hybrid Search • Otomatis Komplit
       </span>
-      <button style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-subtle); color: var(--text-main); cursor: pointer; font-size: 0.74rem; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-full);" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
-        Mode ⇄
-      </button>
     `;
     dropdown.appendChild(headerEl);
 
     if (!items.length) {
       const emptyEl = document.createElement('div');
-      emptyEl.style.cssText = 'padding: 16px 10px; text-align: center; color: var(--text-dim); font-size: 0.85rem;';
-      emptyEl.innerHTML = `
-        Tidak menemukan hasil yang cocok.<br>
-        <button class="btn btn-sm btn-secondary" style="margin-top: 8px; padding: 4px 12px; font-size: 0.78rem;" onclick="event.stopPropagation(); app.toggleSearchSourceFromDropdown('${targetId}')">
-          Ganti Mode Sumber Pencarian ⇄
-        </button>
-      `;
+      emptyEl.style.cssText = 'padding: 18px 10px; text-align: center; color: var(--text-dim); font-size: 0.85rem;';
+      emptyEl.textContent = 'Tidak menemukan komik yang cocok. Coba kata kunci lain.';
       dropdown.appendChild(emptyEl);
       dropdown.classList.add('open');
       return;
@@ -1728,21 +1698,6 @@ const app = {
     }
 
     dropdown.classList.add('open');
-  },
-
-  toggleSearchSourceFromDropdown(targetId) {
-    const order = ['auto', 'mangadex', 'mangapill'];
-    const nextIdx = (order.indexOf(this.activeSource) + 1) % order.length;
-    this.selectGlobalServer(order[nextIdx]);
-    const input = targetId.includes('mobile')
-      ? document.getElementById('mobile-search-input')
-      : document.getElementById('global-search-input');
-    const q = input ? input.value.trim() : '';
-    if (q) {
-      this.executeQuickSearch(q, targetId);
-    } else {
-      this.renderRecentSearchSuggestions(targetId);
-    }
   },
 
   renderRecentSearchSuggestions(targetId = 'quick-search-results') {
@@ -1849,60 +1804,13 @@ const app = {
     }
   },
 
-  toggleServerMenu() {
-    const menu = document.getElementById('server-dropdown-menu');
-    if (menu) menu.classList.toggle('open');
-  },
-
-  syncServerUI(source = 'auto') {
-    this.activeSource = source;
-    const labels = {
-      auto: 'Otomatis',
-      mangadex: 'MangaDex',
-      mangapill: 'MangaPill'
-    };
-    const label = document.getElementById('current-server-label');
-    if (label) {
-      label.textContent = labels[source] || 'Otomatis';
-    }
-
-    document.getElementById('server-opt-auto')?.classList.toggle('active', source === 'auto');
-    document.getElementById('server-opt-mangadex')?.classList.toggle('active', source === 'mangadex');
-    document.getElementById('server-opt-mangapill')?.classList.toggle('active', source === 'mangapill');
-
-    document.getElementById('mob-srv-auto')?.classList.toggle('active', source === 'auto');
-    document.getElementById('mob-srv-mangadex')?.classList.toggle('active', source === 'mangadex');
-    document.getElementById('mob-srv-mangapill')?.classList.toggle('active', source === 'mangapill');
-  },
-
-  selectGlobalServer(source) {
-    this.syncServerUI(source);
-
-    const menu = document.getElementById('server-dropdown-menu');
-    if (menu) menu.classList.remove('open');
-
-    const toastMessages = {
-      auto: 'Mode Otomatis Aktif: Server 1 & Server 2 Digabung Cerdas',
-      mangadex: 'Mode Manual: Hanya Server 1 (MangaDex)',
-      mangapill: 'Mode Manual: Hanya Server 2 (MangaPill Komplit)'
-    };
-    this.showToast(toastMessages[source] || toastMessages.auto);
-
-    // Refresh search or manga detail view if currently open
-    if (this.currentView === 'search') {
-      const pageInput = document.getElementById('search-page-input');
-      const q = pageInput ? pageInput.value.trim() : '';
-      this.renderSearchView({ q });
-    } else if (this.currentView === 'manga' && this.selectedManga) {
-      this.renderMangaDetailView(this.selectedManga.id);
-    }
-  },
-
   clearSearch() {
     const input = document.getElementById('global-search-input');
     if (input) input.value = '';
     const clearBtn = document.getElementById('search-clear-btn');
     if (clearBtn) clearBtn.style.display = 'none';
+    const kbdHint = document.getElementById('search-kbd-hint');
+    if (kbdHint && document.activeElement !== input) kbdHint.style.display = '';
     const dd = document.getElementById('quick-search-results');
     if (dd) dd.classList.remove('open');
   },
@@ -1968,9 +1876,6 @@ const app = {
 
           const found = this.filterTags.find((t) => t.name.toLowerCase() === g.toLowerCase());
           if (found) {
-            if (this.activeSource === 'mangapill') {
-              this.syncServerUI('auto');
-            }
             this.selectedFilterTags.clear();
             this.selectedFilterTags.add(found.id);
             this.navigate('search', { tags: found.id });
@@ -2187,29 +2092,115 @@ const app = {
     const modal = document.getElementById('auth-modal');
     if (!modal) return;
     const isShowing = force !== undefined ? force : modal.style.display !== 'flex';
-    modal.style.display = isShowing ? 'flex' : 'none';
+    const errBanner = document.getElementById('auth-error-banner');
+    const successOverlay = document.getElementById('auth-success-overlay');
+    const modalBox = document.getElementById('auth-modal-box');
+
+    if (isShowing) {
+      if (errBanner) errBanner.style.display = 'none';
+      if (successOverlay) successOverlay.style.display = 'none';
+      if (modalBox) modalBox.classList.remove('is-shaking');
+      modal.style.display = 'flex';
+
+      const activeTab = document.getElementById('auth-tabs-wrap')?.getAttribute('data-active-tab') || 'login';
+      setTimeout(() => {
+        const targetInput = document.getElementById(activeTab === 'register' ? 'reg-username' : 'login-identifier');
+        if (targetInput && window.innerWidth > 768) targetInput.focus();
+      }, 120);
+    } else {
+      modal.style.display = 'none';
+      if (errBanner) errBanner.style.display = 'none';
+      if (successOverlay) successOverlay.style.display = 'none';
+      if (modalBox) modalBox.classList.remove('is-shaking');
+    }
   },
 
   switchAuthTab(tab) {
+    const tabsWrap = document.getElementById('auth-tabs-wrap');
     const tabLogin = document.getElementById('tab-login');
     const tabReg = document.getElementById('tab-register');
     const formLogin = document.getElementById('form-login');
     const formReg = document.getElementById('form-register');
     const title = document.getElementById('auth-modal-title');
+    const subtitle = document.getElementById('auth-modal-subtitle');
+    const errBanner = document.getElementById('auth-error-banner');
+
+    if (tabsWrap) tabsWrap.setAttribute('data-active-tab', tab === 'register' ? 'register' : 'login');
+    if (errBanner) errBanner.style.display = 'none';
 
     if (tab === 'login') {
       if (tabLogin) tabLogin.classList.add('active');
       if (tabReg) tabReg.classList.remove('active');
       if (formLogin) formLogin.style.display = 'flex';
       if (formReg) formReg.style.display = 'none';
-      if (title) title.textContent = 'Masuk ke Akun';
+      if (title) title.textContent = 'Masuk ke MangaFlow';
+      if (subtitle) subtitle.textContent = 'Sinkronisasi favorit, progres halaman & riwayat baca di semua perangkat.';
     } else {
       if (tabLogin) tabLogin.classList.remove('active');
       if (tabReg) tabReg.classList.add('active');
       if (formLogin) formLogin.style.display = 'none';
       if (formReg) formReg.style.display = 'flex';
       if (title) title.textContent = 'Buat Akun Baru';
+      if (subtitle) subtitle.textContent = 'Daftar gratis dalam 5 detik — koleksi komik Anda aman di cloud.';
     }
+  },
+
+  showAuthError(message) {
+    const errBanner = document.getElementById('auth-error-banner');
+    const errText = document.getElementById('auth-error-text');
+    const modalBox = document.getElementById('auth-modal-box');
+    if (errText) errText.textContent = String(message || 'Terjadi kesalahan otentikasi.');
+    if (errBanner) errBanner.style.display = 'flex';
+    if (modalBox) {
+      modalBox.classList.remove('is-shaking');
+      void modalBox.offsetWidth;
+      modalBox.classList.add('is-shaking');
+    }
+  },
+
+  updatePasswordStrength(value = '') {
+    const meter = document.getElementById('reg-strength-meter');
+    const label = document.getElementById('reg-strength-label');
+    const val = String(value || '');
+    let score = 0;
+    if (val.length >= 6) score += 1;
+    if (val.length >= 10) score += 1;
+    if (/[a-z]/.test(val) && /[A-Z]/.test(val)) score += 1;
+    if (/\d/.test(val) || /[^A-Za-z0-9]/.test(val)) score += 1;
+
+    if (meter) meter.setAttribute('data-score', String(score));
+    if (label) {
+      const texts = [
+        'Kekuatan sandi: Minimal 6 karakter',
+        'Kekuatan sandi: Cukup (tambahkan angka/huruf besar)',
+        'Kekuatan sandi: Lumayan Baik',
+        'Kekuatan sandi: Kuat',
+        'Kekuatan sandi: Sangat Kuat ✨'
+      ];
+      label.textContent = val.length === 0 ? texts[0] : texts[score];
+    }
+  },
+
+  playAuthSuccessAndClose(titleText, subText) {
+    const overlay = document.getElementById('auth-success-overlay');
+    const titleEl = document.getElementById('auth-success-title');
+    const subEl = document.getElementById('auth-success-sub');
+    if (!overlay) {
+      this.toggleAuthModal(false);
+      return Promise.resolve();
+    }
+    if (titleEl) titleEl.textContent = titleText;
+    if (subEl) subEl.textContent = subText;
+    overlay.style.display = 'flex';
+
+    const reduceMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const holdMs = reduceMotion ? 220 : 820;
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        this.toggleAuthModal(false);
+        resolve();
+      }, holdMs);
+    });
   },
 
   toggleUserMenu(force) {
@@ -2240,6 +2231,8 @@ const app = {
     const submitBtn = document.getElementById('login-submit-btn');
 
     if (!identifier || !password) return;
+    const errBanner = document.getElementById('auth-error-banner');
+    if (errBanner) errBanner.style.display = 'none';
 
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -2250,14 +2243,19 @@ const app = {
       const res = await Api.login(identifier, password);
       if (res.success && res.user) {
         State.setAuth(res.user, res.token, res.data);
-        this.toggleAuthModal(false);
+        await this.playAuthSuccessAndClose(
+          `Selamat Datang, ${res.user.username}!`,
+          'Koleksi favorit & riwayat baca Anda siap.'
+        );
         this.showToast(`Selamat datang kembali, ${res.user.username}!`);
         if (this.currentView === 'manga' && this.selectedManga) {
           this.renderMangaDetailView(this.selectedManga.id);
         }
       }
     } catch (err) {
-      this.showToast(err.message || 'Gagal masuk. Periksa kembali username/password.');
+      const msg = err.message || 'Gagal masuk. Periksa kembali username/password.';
+      this.showAuthError(msg);
+      this.showToast(msg);
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -2274,6 +2272,8 @@ const app = {
     const submitBtn = document.getElementById('reg-submit-btn');
 
     if (!username || !email || !password) return;
+    const errBanner = document.getElementById('auth-error-banner');
+    if (errBanner) errBanner.style.display = 'none';
 
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -2284,14 +2284,19 @@ const app = {
       const res = await Api.register(username, email, password);
       if (res.success && res.user) {
         State.setAuth(res.user, res.token);
-        this.toggleAuthModal(false);
+        await this.playAuthSuccessAndClose(
+          `Akun Siap, ${res.user.username}!`,
+          'Cloud Sync telah diaktifkan otomatis.'
+        );
         this.showToast(`Akun berhasil dibuat! Selamat membaca, ${res.user.username}!`);
         if (this.currentView === 'manga' && this.selectedManga) {
           this.renderMangaDetailView(this.selectedManga.id);
         }
       }
     } catch (err) {
-      this.showToast(err.message || 'Gagal membuat akun.');
+      const msg = err.message || 'Gagal membuat akun.';
+      this.showAuthError(msg);
+      this.showToast(msg);
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
