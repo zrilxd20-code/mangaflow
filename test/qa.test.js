@@ -634,6 +634,87 @@ async function runComprehensiveQA() {
       readerJsContent.includes('findAdjacentChapter')
     );
 
+    // 9.13 v2.1.0: Multi-API Enrichment, Manhwa/Manhua Completeness & Security Hardening QA
+    const soloDexId = '32d76d19-8a05-4db0-9fc2-e0b0648fe9d0';
+    const [rSoloDetail, rSoloChapters, rSoloEnrich, rTrendManhwa, rHybManhua] = await Promise.all([
+      fetch(`${baseUrl}/api/manga/${soloDexId}`),
+      fetch(`${baseUrl}/api/manga/${soloDexId}/chapters?lang=en,id`),
+      fetch(`${baseUrl}/api/manga/${soloDexId}/enrichment`),
+      fetch(`${baseUrl}/api/trending?type=manhwa`),
+      fetch(`${baseUrl}/api/hybrid/search?type=manhua`)
+    ]);
+    const [soloDetailJson, soloChaptersJson, soloEnrichJson, trendManhwaJson, hybManhuaJson] = await Promise.all([
+      rSoloDetail.json(),
+      rSoloChapters.json(),
+      rSoloEnrich.json(),
+      rTrendManhwa.json(),
+      rHybManhua.json()
+    ]);
+
+    const rProxyHtmlReject = await fetch(`${baseUrl}/api/proxy/image?url=${encodeURIComponent('https://mangapill.com/')}`);
+    const enrichImgUrl = soloEnrichJson.data?.coverUrlExtra || soloEnrichJson.data?.bannerUrl;
+    const rProxyAniList = enrichImgUrl && enrichImgUrl.startsWith('/api/proxy/image')
+      ? await fetch(`${baseUrl}${enrichImgUrl}`)
+      : { status: 0, headers: new Headers() };
+
+    const homeCsp = rHome.headers.get('content-security-policy') || '';
+    const homeCorp = rHome.headers.get('cross-origin-resource-policy') || '';
+    assertTest(
+      'Security Hardening v2.1.0: CSP, CORP Same-Origin, & Proxy Blokir HTML/XSS (415) serta Whitelist AniList',
+      homeCsp.includes("frame-ancestors 'self'") &&
+      homeCsp.includes("object-src 'none'") &&
+      homeCorp === 'same-origin' &&
+      rProxyHtmlReject.status === 415 &&
+      rProxyAniList.status === 200
+    );
+
+    assertTest(
+      'Manhwa Title Fix & Hybrid Completeness: Solo Leveling Terdeteksi Manhwa & Memiliki >= 200 Chapter Otomatis',
+      rSoloDetail.status === 200 &&
+      soloDetailJson.data?.title === 'Solo Leveling' &&
+      soloDetailJson.data?.comicType === 'manhwa' &&
+      rSoloChapters.status === 200 &&
+      soloChaptersJson.hybridMerged === true &&
+      Array.isArray(soloChaptersJson.data) &&
+      soloChaptersJson.data.length >= 200
+    );
+
+    assertTest(
+      'Katalog Manhwa (KR) & Manhua (CN) Berfungsi Penuh di /api/trending?type=manhwa & /api/hybrid/search?type=manhua',
+      rTrendManhwa.status === 200 &&
+      trendManhwaJson.success === true &&
+      Array.isArray(trendManhwaJson.data) &&
+      trendManhwaJson.data.length > 0 &&
+      trendManhwaJson.data.some((m) => m.comicType === 'manhwa') &&
+      rHybManhua.status === 200 &&
+      hybManhuaJson.success === true &&
+      Array.isArray(hybManhuaJson.data) &&
+      hybManhuaJson.data.length > 0 &&
+      hybManhuaJson.data.some((m) => m.comicType === 'manhua')
+    );
+
+    assertTest(
+      'Multi-API Enrichment (/api/manga/:id/enrichment) Menyajikan Data AniList/Kitsu, Karakter & Rekomendasi',
+      rSoloEnrich.status === 200 &&
+      soloEnrichJson.success === true &&
+      Boolean(soloEnrichJson.data?.anilistId || soloEnrichJson.data?.kitsuId) &&
+      Array.isArray(soloEnrichJson.data?.characters) &&
+      soloEnrichJson.data.characters.length > 0 &&
+      Array.isArray(soloEnrichJson.data?.recommendations) &&
+      soloEnrichJson.data.recommendations.length > 0
+    );
+
+    assertTest(
+      'UI v2.1.0: Tab Manga/Manhwa/Manhua, Scroll Affordance (@property), Lazy/Dimension CLS & Enrichment Slot Aktif',
+      indexHtml.includes('id="trending-type-tabs"') &&
+      indexHtml.includes('id="filter-type-options"') &&
+      indexHtml.includes('?v=2.1.0') &&
+      styleCss.includes('@property --fade-start') &&
+      styleCss.includes('.badge-manhwa') &&
+      appJsContent.includes('loadDetailEnrichment') &&
+      appJsContent.includes('switchTrendingType')
+    );
+
   } catch (err) {
     console.error('  🔴 [ERROR] Terjadi kegagalan tak terduga selama QA:', err);
   } finally {

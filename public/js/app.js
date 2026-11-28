@@ -19,6 +19,8 @@ const app = {
   selectedFilterTags: new Set(),
   selectedSort: 'relevance',
   selectedStatus: '',
+  selectedType: '',
+  activeTrendingType: 'all',
   activeSource: 'auto',
   chaptersDisplayLimit: 80,
 
@@ -34,6 +36,7 @@ const app = {
     Reader.init();
     this.bindGlobalEvents();
     this.initScrollTopButton();
+    this.initHorizontalScrollHints(document);
     this.syncLangPrefUI();
     this.updateBadgeCounts();
     this.updateAuthUI();
@@ -195,7 +198,15 @@ const app = {
       }
     });
 
-    // Bind Filter Modal Sort & Status Option Chips
+    // Bind Filter Modal Type, Sort & Status Option Chips
+    document.querySelectorAll('#filter-type-options .filter-chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#filter-type-options .filter-chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+        this.selectedType = chip.dataset.type || '';
+      });
+    });
+
     document.querySelectorAll('#filter-sort-options .filter-chip').forEach((chip) => {
       chip.addEventListener('click', () => {
         document.querySelectorAll('#filter-sort-options .filter-chip').forEach((c) => c.classList.remove('active'));
@@ -270,6 +281,32 @@ const app = {
       if (!e.relatedTarget && getComputedStyle(btn).visibility === 'hidden' && viewport) {
         viewport.focus({ preventScroll: true });
       }
+    });
+  },
+
+  // Horizontal scroll edge fade fallback for browsers lacking animation-timeline: scroll()
+  initHorizontalScrollHints(root = document) {
+    if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('animation-timeline', 'scroll()')) {
+      return;
+    }
+    if (typeof IntersectionObserver === 'undefined') return;
+    const scope = root && typeof root.querySelectorAll === 'function' ? root : document;
+    scope.querySelectorAll('.hscroll-fade').forEach((scroller) => {
+      if (scroller.dataset.scrollHintBound === '1') return;
+      const first = scroller.firstElementChild;
+      const last = scroller.lastElementChild;
+      if (!first || !last) return;
+      scroller.dataset.scrollHintBound = '1';
+      const observer = new IntersectionObserver(
+        (entries) => {
+          for (const { target, intersectionRatio } of entries) {
+            scroller.classList.toggle(target === first ? 'more-start' : 'more-end', intersectionRatio < 1);
+          }
+        },
+        { root: scroller, threshold: 1, rootMargin: '1px' }
+      );
+      observer.observe(first);
+      observer.observe(last);
     });
   },
 
@@ -392,6 +429,7 @@ const app = {
         if (params.tags) qParams.set('tags', params.tags);
         if (params.sort && params.sort !== 'relevance') qParams.set('sort', params.sort);
         if (params.status) qParams.set('status', params.status);
+        if (params.type) qParams.set('type', params.type);
         if (params.page && Number(params.page) > 1) qParams.set('page', params.page);
         const qs = qParams.toString();
         targetHash = qs ? `#/search?${qs}` : '#/search';
@@ -643,13 +681,54 @@ const app = {
 
   renderTrendingGrid(items) {
     const grid = document.getElementById('trending-grid');
+    if (!grid) return;
     grid.innerHTML = '';
+
+    if (!items || !items.length) {
+      grid.innerHTML = `
+        <div style="grid-column:1 / -1;text-align:center;padding:32px 0;color:var(--text-dim);">
+          <p style="margin-bottom:12px;">Belum ada data trending untuk kategori ini.</p>
+          <button type="button" class="btn btn-secondary btn-sm" onclick="app.switchTrendingType('all')">Tampilkan Semua</button>
+        </div>
+      `;
+      return;
+    }
 
     items.forEach((item, index) => {
       const card = this.createMangaCard(item, index + 1);
       grid.appendChild(card);
     });
     this.applyGridStagger(grid);
+  },
+
+  async switchTrendingType(type = 'all') {
+    const safeType = ['all', 'manga', 'manhwa', 'manhua'].includes(type) ? type : 'all';
+    this.activeTrendingType = safeType;
+
+    document.querySelectorAll('#trending-type-tabs .type-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.type === safeType);
+    });
+
+    const grid = document.getElementById('trending-grid');
+    if (grid) {
+      grid.innerHTML = Array.from({ length: 6 }, () => '<div class="manga-card skeleton-card"></div>').join('');
+    }
+
+    try {
+      const res = await Api.getTrending(safeType);
+      if (this.activeTrendingType !== safeType) return;
+      if (!res.success || !res.data) throw new Error('Data kosong');
+      this.renderTrendingGrid(res.data);
+    } catch (err) {
+      if (grid) {
+        grid.innerHTML = `
+          <div style="grid-column:1 / -1;text-align:center;padding:32px 0;color:var(--text-dim);">
+            <p style="margin-bottom:12px;">Gagal memuat daftar ${this.escapeHtml(safeType)}.</p>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="app.switchTrendingType('${this.escapeHtml(safeType)}')"><i class="ri-refresh-line"></i> Coba Lagi</button>
+          </div>
+        `;
+      }
+    }
   },
 
   // ---------------- Latest Updates ----------------
@@ -762,6 +841,9 @@ const app = {
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
     const isPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
     const isHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
+    const comicTypeBadge = item.comicType === 'manhwa'
+      ? '<span class="card-badge badge-manhwa">Manhwa</span>'
+      : (item.comicType === 'manhua' ? '<span class="card-badge badge-manhua">Manhua</span>' : '');
     const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
     const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
     const rankRibbonHtml = Number.isInteger(rank) && rank >= 1 && rank <= 10
@@ -770,9 +852,10 @@ const app = {
 
     card.innerHTML = `
       <div class="card-cover-wrap">
-        <img class="card-cover" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" loading="lazy" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
+        <img class="card-cover" width="240" height="340" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" loading="lazy" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         ${rankRibbonHtml}
         <div class="card-badges">
+          ${comicTypeBadge}
           ${isPill ? `
             <span class="card-badge" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; font-weight: 700;">
               <i class="ri-check-double-line"></i> Komplit
@@ -783,7 +866,7 @@ const app = {
             </span>
           `}
           ${isHybrid ? `<span class="card-badge" style="background: rgba(16, 185, 129, 0.85); color: #fff; border: none; font-weight: 700;"><i class="ri-links-line"></i> Hybrid</span>` : ''}
-          ${!isHybrid && item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
+          ${!isHybrid && !comicTypeBadge && item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
         </div>
         <span class="card-read-pill"><i class="ri-book-open-line"></i> Baca</span>
       </div>
@@ -894,6 +977,15 @@ const app = {
       const tagsHtml = (manga.tags || [])
         .map((t) => `<span class="detail-tag">${this.escapeHtml(t)}</span>`)
         .join('');
+      const originLabel = manga.comicType === 'manhwa'
+        ? '<span class="detail-origin-badge origin-manhwa">🇰🇷 Manhwa Korea</span>'
+        : (manga.comicType === 'manhua'
+          ? '<span class="detail-origin-badge origin-manhua">🇨🇳 Manhua China</span>'
+          : '<span class="detail-origin-badge origin-manga">🇯🇵 Manga Jepang</span>');
+      const creatorNames = [...new Set([...(manga.authors || []), ...(manga.artists || [])].filter(Boolean))].slice(0, 4);
+      const authorsHtml = creatorNames
+        .map((name) => `<button type="button" class="author-chip" data-author="${this.escapeHtml(name)}"><i class="ri-quill-pen-line"></i> ${this.escapeHtml(name)}</button>`)
+        .join('');
 
       const starsHtml = [1, 2, 3, 4, 5]
         .map(
@@ -917,8 +1009,10 @@ const app = {
                 <img class="detail-cover-img" src="${this.escapeHtml(fullCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(manga.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
               </div>
               <div class="detail-main-info">
+                <div class="detail-title-badges">${originLabel}</div>
                 <h1 class="detail-title">${this.escapeHtml(manga.title)}</h1>
                 <div class="detail-alt-titles">${(manga.altTitles || []).map((t) => this.escapeHtml(t)).join(' • ')}</div>
+                ${authorsHtml ? `<div class="detail-authors-row" id="detail-authors-row">${authorsHtml}</div>` : ''}
 
                 <div class="detail-stats-bar">
                   <div class="stat-item" title="Rating Global">
@@ -1028,6 +1122,9 @@ const app = {
             <div class="chapters-grid" id="chapters-list-grid"></div>
           </div>
 
+          <!-- Dynamic Multi-API Enrichment Slot (Characters, Relations & Recommendations) -->
+          <div id="detail-enrichment-slot"></div>
+
           <!-- Community Comments & Discussion Section -->
           <div class="comments-section" id="manga-comments-section">
             <div class="chapters-header-bar">
@@ -1073,6 +1170,14 @@ const app = {
         };
       }
 
+      // Bind clickable author/artist search chips cleanly without inline quote bugs
+      document.querySelectorAll('#detail-authors-row .author-chip').forEach((chip) => {
+        chip.onclick = () => {
+          const authorName = chip.dataset.author;
+          if (authorName) this.performSearch(authorName);
+        };
+      });
+
       // Read first chapter button logic (always picks earliest chapter regardless of current sort order)
       const firstBtn = document.getElementById('detail-read-first-btn');
       firstBtn.onclick = () => {
@@ -1088,6 +1193,9 @@ const app = {
         }
       };
 
+      // Trigger non-blocking Multi-API enrichment (AniList Banner, Characters, Relations & Recommendations)
+      void this.loadDetailEnrichment(manga);
+
     } catch (err) {
       view.innerHTML = `
         <div class="section-container" style="text-align: center; padding: 60px 0;">
@@ -1097,6 +1205,170 @@ const app = {
           <button class="btn btn-primary" onclick="app.navigate('home')">Kembali ke Beranda</button>
         </div>
       `;
+    }
+  },
+
+  async loadDetailEnrichment(manga) {
+    if (!manga || !manga.id) return;
+    const targetId = manga.id;
+    try {
+      const res = await Api.getMangaEnrichment(manga.id, manga.title || '');
+      if (!res?.success || !res.data) return;
+      if (!this.selectedManga || this.selectedManga.id !== targetId) return;
+
+      const info = res.data;
+
+      // Upgrade wide cinematic backdrop if AniList/Kitsu provided a landscape banner
+      if (info.bannerUrl) {
+        const backdropEl = document.querySelector('#manga-view .detail-backdrop');
+        if (backdropEl) {
+          backdropEl.src = this.resolveCoverUrl(info.bannerUrl);
+        }
+      }
+
+      // Append AniList Community Score badge if not yet displayed
+      if (info.anilistScore) {
+        const statsBar = document.querySelector('#manga-view .detail-stats-bar');
+        if (statsBar && !document.getElementById('detail-anilist-stat')) {
+          const scoreEl = document.createElement('div');
+          scoreEl.className = 'stat-item';
+          scoreEl.id = 'detail-anilist-stat';
+          scoreEl.title = 'Skor Global AniList';
+          scoreEl.innerHTML = `<i class="ri-bar-chart-fill" style="color: #38bdf8;"></i> <span>${this.escapeHtml(String(info.anilistScore))} / 10 AniList</span>`;
+          statsBar.insertBefore(scoreEl, statsBar.children[1] || null);
+        }
+      }
+
+      // Supplement missing description strictly via textContent (never innerHTML)
+      if (info.description) {
+        const descEl = document.querySelector('#manga-view .detail-description');
+        if (descEl) {
+          const currText = descEl.textContent.trim();
+          if (!currText || currText === 'No description available.') {
+            descEl.textContent = info.description;
+          }
+        }
+      }
+
+      const slot = document.getElementById('detail-enrichment-slot');
+      if (!slot) return;
+
+      const chars = Array.isArray(info.characters) ? info.characters : [];
+      const recs = Array.isArray(info.recommendations) ? info.recommendations : [];
+      const rels = Array.isArray(info.relations) ? info.relations : [];
+      if (!chars.length && !recs.length && !rels.length) return;
+
+      const section = document.createElement('section');
+      section.className = 'enrichment-section';
+
+      if (chars.length > 0) {
+        const block = document.createElement('div');
+        block.className = 'enrichment-block';
+        block.innerHTML = `
+          <div class="enrichment-subhead">
+            <h3><i class="ri-team-line"></i> Karakter Utama</h3>
+          </div>
+          <div class="character-strip hscroll-fade">
+            ${chars.map((c) => {
+              const avatarSrc = this.resolveCoverUrl(c.avatarUrl) || this.getFallbackCoverDataUri(c.name);
+              const roleLabel = c.role === 'MAIN' ? 'Utama' : 'Pendukung';
+              return `
+                <div class="character-card">
+                  <img class="character-avatar" width="64" height="64" loading="lazy" src="${this.escapeHtml(avatarSrc)}" alt="${this.escapeHtml(c.name)}" onerror="app.handleCoverError(this, '', this.alt)" />
+                  <div class="character-name">${this.escapeHtml(c.name)}</div>
+                  <div class="character-role">${this.escapeHtml(roleLabel)}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+        section.appendChild(block);
+      }
+
+      const combinedRelated = [
+        ...recs.map((r) => ({ ...r, badgeLabel: r.score ? `★ ${r.score}` : (r.comicType === 'manhwa' ? 'Manhwa' : (r.comicType === 'manhua' ? 'Manhua' : 'Rekomendasi')) })),
+        ...rels.filter((rel) => rel.type === 'MANGA' || rel.type === 'NOVEL').map((rel) => ({
+          id: rel.id,
+          title: rel.title,
+          comicType: rel.comicType,
+          coverUrl: rel.coverUrl,
+          badgeLabel: String(rel.relationType || 'Terkait').replace(/_/g, ' ')
+        }))
+      ].slice(0, 12);
+
+      if (combinedRelated.length > 0) {
+        const block = document.createElement('div');
+        block.className = 'enrichment-block';
+        block.innerHTML = `
+          <div class="enrichment-subhead">
+            <h3><i class="ri-compass-discover-line"></i> Seri Terkait & Rekomendasi Serupa</h3>
+          </div>
+        `;
+        const strip = document.createElement('div');
+        strip.className = 'rec-strip hscroll-fade';
+        combinedRelated.forEach((rec) => {
+          const card = document.createElement('div');
+          card.className = 'rec-card';
+          const coverSrc = this.resolveCoverUrl(rec.coverUrl) || this.getFallbackCoverDataUri(rec.title);
+          const typeLabel = rec.comicType === 'manhwa' ? 'Manhwa' : (rec.comicType === 'manhua' ? 'Manhua' : 'Manga');
+          card.innerHTML = `
+            <div class="rec-cover-wrap">
+              <img class="rec-cover" width="152" height="203" loading="lazy" src="${this.escapeHtml(coverSrc)}" alt="${this.escapeHtml(rec.title)}" onerror="app.handleCoverError(this, '', this.alt)" />
+              <span class="rec-badge">${this.escapeHtml(rec.badgeLabel)}</span>
+            </div>
+            <div class="rec-body">
+              <div class="rec-title" title="${this.escapeHtml(rec.title)}">${this.escapeHtml(rec.title)}</div>
+              <div class="rec-meta">
+                <span>${this.escapeHtml(typeLabel)}</span>
+                <span>Buka <i class="ri-arrow-right-s-line"></i></span>
+              </div>
+            </div>
+          `;
+          card.onclick = () => {
+            if (rec.dexId) {
+              this.navigate('manga', { id: rec.dexId });
+            } else {
+              this.openRecommendedTitle(rec.title);
+            }
+          };
+          strip.appendChild(card);
+        });
+        block.appendChild(strip);
+        section.appendChild(block);
+      }
+
+      slot.innerHTML = '';
+      slot.appendChild(section);
+      this.initHorizontalScrollHints(slot);
+    } catch (_) {
+      // Enrichment is progressive enhancement; never block chapter reading
+    }
+  },
+
+  async openRecommendedTitle(title) {
+    const cleanTitle = String(title || '').trim();
+    if (!cleanTitle) return;
+    this.showTopLoader();
+    try {
+      const res = await Api.searchHybrid({ q: cleanTitle, limit: 5 });
+      const candidates = res?.data || [];
+      if (candidates.length > 0) {
+        const lowerTarget = cleanTitle.toLowerCase();
+        const exact = candidates.find((c) => {
+          const allNames = [c.title, ...(c.altTitles || [])].map((n) => String(n || '').toLowerCase().trim());
+          return allNames.includes(lowerTarget);
+        });
+        const picked = exact || candidates[0];
+        if (picked?.id) {
+          this.navigate('manga', { id: picked.id });
+          return;
+        }
+      }
+      this.navigate('search', { q: cleanTitle });
+    } catch (_) {
+      this.navigate('search', { q: cleanTitle });
+    } finally {
+      this.finishTopLoader();
     }
   },
 
@@ -1428,7 +1700,13 @@ const app = {
     if (typeof params.status === 'string') {
       this.selectedStatus = params.status;
     }
+    if (typeof params.type === 'string') {
+      this.selectedType = params.type;
+    } else if (!params.tags && !params.q) {
+      this.selectedType = '';
+    }
 
+    const activeType = this.selectedType || '';
     const currentQ = params.q || '';
     if (currentQ.trim()) {
       State.addRecentSearch(currentQ.trim());
@@ -1439,21 +1717,37 @@ const app = {
     const safeQ = this.escapeHtml(currentQ);
     const page = Math.max(1, parseInt(params.page || '1', 10) || 1);
 
+    const catalogTitle = currentQ
+      ? `Hasil Pencarian: "${safeQ}"`
+      : (activeType === 'manhwa'
+        ? 'Katalog Manhwa Populer (Korea)'
+        : (activeType === 'manhua'
+          ? 'Katalog Manhua Populer (China)'
+          : (activeType === 'manga' ? 'Katalog Manga Populer (Jepang)' : 'Jelajahi Katalog Komik')));
+
     view.innerHTML = `
       <div class="section-container">
         <!-- Prominent Mobile & Desktop Search Bar -->
-        <div class="search-page-bar" style="margin-bottom: 18px;">
+        <div class="search-page-bar" style="margin-bottom: 14px;">
           <div class="search-input-wrapper" style="max-width: 640px; margin: 0 auto;">
             <i class="ri-search-line search-icon"></i>
-            <input type="text" id="search-page-input" value="${safeQ}" placeholder="Cari judul manga, manhwa, atau author..." />
+            <input type="text" id="search-page-input" value="${safeQ}" placeholder="Cari judul manga, manhwa, manhua, atau author..." />
             ${currentQ ? `<button class="clear-btn" style="display:block;" onclick="app.navigate('search')"><i class="ri-close-line"></i></button>` : ''}
           </div>
+        </div>
+
+        <!-- Comic Type Quick Filter Pills -->
+        <div class="search-type-pills" id="search-type-pills">
+          <button type="button" class="type-tab-btn ${activeType === '' ? 'active' : ''}" data-type="">Semua</button>
+          <button type="button" class="type-tab-btn ${activeType === 'manga' ? 'active' : ''}" data-type="manga">🇯🇵 Manga</button>
+          <button type="button" class="type-tab-btn ${activeType === 'manhwa' ? 'active' : ''}" data-type="manhwa">🇰🇷 Manhwa</button>
+          <button type="button" class="type-tab-btn ${activeType === 'manhua' ? 'active' : ''}" data-type="manhua">🇨🇳 Manhua</button>
         </div>
 
         <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
           <div class="section-title-wrap">
             <i class="ri-sparkling-2-fill title-icon"></i>
-            <h2>${currentQ ? `Hasil Pencarian: "${safeQ}"` : 'Jelajahi Katalog Manga'}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
+            <h2>${catalogTitle}${page > 1 ? ` (Hal. ${page})` : ''}</h2>
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary btn-sm random-discover-btn" onclick="app.openRandomManga()">
@@ -1479,10 +1773,32 @@ const app = {
       pageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const val = e.target.value.trim();
-          this.navigate('search', { q: val });
+          this.navigate('search', {
+            q: val,
+            tags: Array.from(this.selectedFilterTags).join(','),
+            sort: this.selectedSort,
+            status: this.selectedStatus,
+            type: this.selectedType
+          });
         }
       });
     }
+
+    document.querySelectorAll('#search-type-pills .type-tab-btn').forEach((btn) => {
+      btn.onclick = () => {
+        this.selectedType = btn.dataset.type || '';
+        document.querySelectorAll('#filter-type-options .filter-chip').forEach((c) => {
+          c.classList.toggle('active', (c.dataset.type || '') === this.selectedType);
+        });
+        this.navigate('search', {
+          q: currentQ,
+          tags: Array.from(this.selectedFilterTags).join(','),
+          sort: this.selectedSort,
+          status: this.selectedStatus,
+          type: this.selectedType
+        });
+      };
+    });
 
     if (this.searchViewAbort) {
       this.searchViewAbort.abort();
@@ -1495,6 +1811,7 @@ const app = {
         q: params.q || '',
         sort: this.selectedSort,
         status: this.selectedStatus,
+        type: this.selectedType,
         tags: Array.from(this.selectedFilterTags).join(','),
         page
       };
@@ -1530,7 +1847,8 @@ const app = {
           q: currentQ,
           tags: Array.from(this.selectedFilterTags).join(','),
           sort: this.selectedSort,
-          status: this.selectedStatus
+          status: this.selectedStatus,
+          type: this.selectedType
         };
 
         if (page > 1) {
@@ -1863,6 +2181,24 @@ const app = {
       const pillsContainer = document.getElementById('genre-pills');
       pillsContainer.innerHTML = '';
 
+      // Quick Comic Format Pills (Manhwa & Manhua discovery right below Hero)
+      [
+        { label: '🇰🇷 Manhwa Populer', type: 'manhwa' },
+        { label: '🇨🇳 Manhua Populer', type: 'manhua' }
+      ].forEach(({ label, type }) => {
+        const typeBtn = document.createElement('button');
+        typeBtn.className = 'genre-pill';
+        typeBtn.textContent = label;
+        typeBtn.onclick = () => {
+          document.querySelectorAll('.genre-pill').forEach((p) => p.classList.remove('active'));
+          typeBtn.classList.add('active');
+          this.selectedFilterTags.clear();
+          this.selectedType = type;
+          this.navigate('search', { type, sort: 'followed' });
+        };
+        pillsContainer.appendChild(typeBtn);
+      });
+
       // Prominent Genres
       const topGenres = ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Isekai', 'Romance', 'Sci-Fi', 'Slice of Life', 'Supernatural'];
       
@@ -1878,11 +2214,13 @@ const app = {
           if (found) {
             this.selectedFilterTags.clear();
             this.selectedFilterTags.add(found.id);
-            this.navigate('search', { tags: found.id });
+            this.navigate('search', { tags: found.id, type: this.selectedType });
           }
         };
         pillsContainer.appendChild(btn);
       });
+
+      this.initHorizontalScrollHints(pillsContainer.parentElement || document);
 
       // Populate Modal Tags Picker
       const modalPicker = document.getElementById('modal-tags-picker');
@@ -1912,6 +2250,11 @@ const app = {
   toggleFilterModal() {
     const modal = document.getElementById('filter-modal');
     const isShowing = modal.style.display === 'flex';
+    if (!isShowing) {
+      document.querySelectorAll('#filter-type-options .filter-chip').forEach((c) => {
+        c.classList.toggle('active', (c.dataset.type || '') === (this.selectedType || ''));
+      });
+    }
     modal.style.display = isShowing ? 'none' : 'flex';
   },
 
@@ -1919,12 +2262,14 @@ const app = {
     this.selectedFilterTags.clear();
     this.selectedSort = 'relevance';
     this.selectedStatus = '';
+    this.selectedType = '';
 
     document.querySelectorAll('#filter-modal .filter-chip').forEach((c) => {
       c.classList.remove('active');
     });
-    document.querySelector('#filter-sort-options [data-sort="relevance"]').classList.add('active');
-    document.querySelector('#filter-status-options [data-status=""]').classList.add('active');
+    document.querySelector('#filter-type-options [data-type=""]')?.classList.add('active');
+    document.querySelector('#filter-sort-options [data-sort="relevance"]')?.classList.add('active');
+    document.querySelector('#filter-status-options [data-status=""]')?.classList.add('active');
   },
 
   applyFilters() {
@@ -1937,7 +2282,8 @@ const app = {
       q,
       tags: Array.from(this.selectedFilterTags).join(','),
       sort: this.selectedSort,
-      status: this.selectedStatus
+      status: this.selectedStatus,
+      type: this.selectedType
     };
     if (this.currentView === 'search') {
       this.renderSearchView(filterParams);
@@ -2617,7 +2963,12 @@ const app = {
       trimmed.startsWith('https://uploads.mangadex.org/') ||
       trimmed.startsWith('http://uploads.mangadex.org/') ||
       trimmed.startsWith('https://cdn.readdetectiveconan.com/') ||
-      trimmed.startsWith('http://cdn.readdetectiveconan.com/')
+      trimmed.startsWith('http://cdn.readdetectiveconan.com/') ||
+      trimmed.startsWith('https://s4.anilist.co/') ||
+      trimmed.startsWith('https://img.anili.st/') ||
+      trimmed.startsWith('https://media.kitsu.app/') ||
+      trimmed.startsWith('https://media.kitsu.io/') ||
+      trimmed.startsWith('https://cdn.myanimelist.net/')
     ) {
       return `/api/proxy/image?url=${encodeURIComponent(trimmed)}`;
     }

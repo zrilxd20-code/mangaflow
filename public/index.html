@@ -42,8 +42,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.0.0" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.0.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.1.0" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.1.0" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +75,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=2.0.0" />
-  <link rel="stylesheet" href="./css/reader.css?v=2.0.0" />
+  <link rel="stylesheet" href="./css/style.css?v=2.1.0" />
+  <link rel="stylesheet" href="./css/reader.css?v=2.1.0" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -371,7 +371,7 @@
       <!-- Genre Quick Pills -->
       <section class="genre-pills-section">
         <div class="section-container">
-          <div class="pills-scroll" id="genre-pills">
+          <div class="pills-scroll hscroll-fade" id="genre-pills">
             <!-- Populated via JS -->
           </div>
         </div>
@@ -394,12 +394,20 @@
       <!-- Trending Section -->
       <section class="content-section">
         <div class="section-container">
-          <div class="section-header">
+          <div class="section-header section-header-trending">
             <div class="section-title-wrap">
               <i class="ri-fire-line title-icon hot"></i>
-              <h2>Sedang Populer & Trending</h2>
+              <div>
+                <h2>Sedang Populer &amp; Trending</h2>
+                <span class="section-subtitle">Manga, Manhwa &amp; Manhua pilihan dengan rating tertinggi</span>
+              </div>
             </div>
-            <span class="section-subtitle">Manga pilihan komunitas dengan rating tertinggi</span>
+            <div class="trending-type-tabs" id="trending-type-tabs" role="tablist" aria-label="Filter tipe komik populer">
+              <button type="button" class="type-tab-btn active" data-type="all" onclick="app.switchTrendingType('all')">Semua</button>
+              <button type="button" class="type-tab-btn" data-type="manga" onclick="app.switchTrendingType('manga')">🇯🇵 Manga</button>
+              <button type="button" class="type-tab-btn" data-type="manhwa" onclick="app.switchTrendingType('manhwa')">🇰🇷 Manhwa</button>
+              <button type="button" class="type-tab-btn" data-type="manhua" onclick="app.switchTrendingType('manhua')">🇨🇳 Manhua</button>
+            </div>
           </div>
           <div class="manga-grid" id="trending-grid">
             <!-- Skeleton cards while loading -->
@@ -825,6 +833,16 @@
 
       <div class="modal-body">
         <div class="filter-group">
+          <label class="filter-label">Tipe Komik (Origin)</label>
+          <div class="filter-options-grid" id="filter-type-options">
+            <button class="filter-chip active" data-type="">Semua</button>
+            <button class="filter-chip" data-type="manga">🇯🇵 Manga (JP)</button>
+            <button class="filter-chip" data-type="manhwa">🇰🇷 Manhwa (KR)</button>
+            <button class="filter-chip" data-type="manhua">🇨🇳 Manhua (CN)</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
           <label class="filter-label">Urutkan Berdasarkan</label>
           <div class="filter-options-grid" id="filter-sort-options">
             <button class="filter-chip active" data-sort="relevance">Paling Sesuai</button>
@@ -1085,17 +1103,17 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=2.0.0"></script>
-  <script src="./js/api.js?v=2.0.0"></script>
-  <script src="./js/reader.js?v=2.0.0"></script>
-  <script src="./js/app.js?v=2.0.0"></script>
+  <script src="./js/state.js?v=2.1.0"></script>
+  <script src="./js/api.js?v=2.1.0"></script>
+  <script src="./js/reader.js?v=2.1.0"></script>
+  <script src="./js/app.js?v=2.1.0"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
     if ('caches' in window) {
       caches.keys().then((keys) => {
         keys.forEach((k) => {
-          if (k.startsWith('mangaflow-v1.')) caches.delete(k);
+          if (k.startsWith('mangaflow-') && k !== 'mangaflow-v2.1.0') caches.delete(k);
         });
       }).catch(() => {});
     }

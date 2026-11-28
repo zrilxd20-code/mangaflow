@@ -8,6 +8,7 @@ const dns = require('dns');
 const { Readable } = require('stream');
 const db = require('./database');
 const mangapill = require('./providers/mangapill');
+const enrichment = require('./providers/enrichment');
 
 // ----------------------------------------------------
 // ANTI-ISP BLOCKING & DYNAMIC DNS-OVER-HTTPS (DoH) LAYER
@@ -77,6 +78,17 @@ const PORT = process.env.PORT || 3000;
 // In-Memory Cache: stdTTL = 15 minutes (900s), checkperiod = 2 minutes
 const cache = new NodeCache({ stdTTL: 900, checkperiod: 120 });
 
+// Single-flight Request Coalescer: avoids duplicate upstream calls for concurrent hits
+const inflightRequests = new Map();
+function coalesce(key, fn) {
+  if (inflightRequests.has(key)) return inflightRequests.get(key);
+  const promise = Promise.resolve()
+    .then(fn)
+    .finally(() => inflightRequests.delete(key));
+  inflightRequests.set(key, promise);
+  return promise;
+}
+
 // ----------------------------------------------------
 // HTTP SECURITY HEADERS & BODY LIMIT
 // ----------------------------------------------------
@@ -86,7 +98,15 @@ app.use((req, res, next) => {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('Permissions-Policy', 'camera=(), geolocation=(), microphone=(), focus-without-user-activation=()');
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net data:; img-src 'self' data: blob: https:; connect-src 'self' https:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'"
+  );
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https' || isServerless) {
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  }
   next();
 });
 
@@ -400,24 +420,63 @@ async function resilientFetch(url, options = {}, retries = 2, backoff = 400) {
   });
 }
 
-// Helper to format manga item
+// Helper to apply Manga (ja) / Manhwa (ko) / Manhua (zh, zh-hk) filter
+function applyComicTypeFilter(params, type) {
+  if (type === 'manga') {
+    params.append('originalLanguage[]', 'ja');
+  } else if (type === 'manhwa') {
+    params.append('originalLanguage[]', 'ko');
+  } else if (type === 'manhua') {
+    params.append('originalLanguage[]', 'zh');
+    params.append('originalLanguage[]', 'zh-hk');
+  }
+}
+
+// Helper to format manga item (fixes romanized Manhwa/Manhua titles & preserves cross-platform links)
 function formatManga(item) {
   const attrs = item.attributes || {};
   const titles = attrs.title || {};
-  const title = titles.en || titles['ja-ro'] || Object.values(titles)[0] || 'Unknown Title';
+  const altTitleObjs = Array.isArray(attrs.altTitles) ? attrs.altTitles : [];
+  const altEn = altTitleObjs.find((t) => t && t.en)?.en;
+  const altId = altTitleObjs.find((t) => t && t.id)?.id;
 
-  const altTitles = (attrs.altTitles || []).map((t) => Object.values(t)[0]).filter(Boolean);
+  const title =
+    titles.en ||
+    titles.id ||
+    altEn ||
+    altId ||
+    titles['ja-ro'] ||
+    titles['ko-ro'] ||
+    titles['zh-ro'] ||
+    Object.values(titles)[0] ||
+    'Unknown Title';
+
+  const variantSet = new Set();
+  for (const val of [...Object.values(titles), ...altTitleObjs.flatMap((t) => Object.values(t || {}))]) {
+    if (typeof val === 'string') {
+      const cleaned = val.trim();
+      if (cleaned && cleaned !== title) {
+        variantSet.add(cleaned);
+      }
+    }
+  }
+  const altTitles = Array.from(variantSet).slice(0, 15);
 
   const descObj = attrs.description || {};
   const description = descObj.en || descObj.id || Object.values(descObj)[0] || 'No description available.';
 
-  // Find cover art
+  // Find cover art, author & artist relationships
   let coverFileName = null;
+  const authors = [];
+  const artists = [];
   const rels = item.relationships || [];
   for (const rel of rels) {
-    if (rel.type === 'cover_art' && rel.attributes && rel.attributes.fileName) {
+    if (rel.type === 'cover_art' && rel.attributes && rel.attributes.fileName && !coverFileName) {
       coverFileName = rel.attributes.fileName;
-      break;
+    } else if (rel.type === 'author' && rel.attributes?.name) {
+      authors.push(rel.attributes.name);
+    } else if (rel.type === 'artist' && rel.attributes?.name) {
+      artists.push(rel.attributes.name);
     }
   }
 
@@ -437,15 +496,22 @@ function formatManga(item) {
     .map((t) => t.attributes?.name?.en)
     .filter(Boolean);
 
+  const origLang = attrs.originalLanguage || 'ja';
+  const comicType = origLang === 'ko' ? 'manhwa' : (origLang === 'zh' || origLang === 'zh-hk' ? 'manhua' : 'manga');
+
   return {
     id: item.id,
     title,
-    altTitles: altTitles.slice(0, 5),
+    altTitles,
     description,
     status: attrs.status || 'unknown',
     year: attrs.year,
     contentRating: attrs.contentRating,
-    originalLanguage: attrs.originalLanguage,
+    originalLanguage: origLang,
+    comicType,
+    links: attrs.links || {},
+    authors: [...new Set(authors)],
+    artists: [...new Set(artists)],
     tags,
     coverUrl,
     coverUrlSmall,
@@ -461,9 +527,9 @@ function formatManga(item) {
 // SMART HYBRID ENGINE (AUTO-MERGE MANGADEX + MANGAPILL)
 // ----------------------------------------------------
 const SPINOFF_GUARD_WORDS = [
-  'party', 'anthology', 'gaiden', 'novel', 'light novel', 'one shot',
+  'party', 'anthology', 'gaiden', 'light novel', 'one shot',
   'oneshot', 'doujinshi', '4 koma', '4koma', 'spin off', 'spinoff',
-  'colored', 'color', 'fan colored', 'pilot', 'movie', 'databook'
+  'colored', 'fan colored', 'pilot', 'movie', 'databook', 'ragnarok'
 ];
 
 function normalizeTitleForMatch(str) {
@@ -493,16 +559,17 @@ function findBestMangaPillMatch(targetManga, pillCandidates = []) {
   const targetNorms = rawTitles.map(normalizeTitleForMatch).filter(Boolean);
   if (targetNorms.length === 0) return null;
 
-  // 1. Strict exact normalized match against primary title or altTitles
+  // 1. Strict exact normalized match (or "<title> novel" label used by MangaPill for webtoons like Solo Leveling)
   for (const cand of pillCandidates) {
     const candNorm = normalizeTitleForMatch(cand.title);
-    if (candNorm && targetNorms.includes(candNorm)) {
+    if (candNorm && targetNorms.some((tNorm) => candNorm === tNorm || candNorm === `${tNorm} novel`)) {
       return cand;
     }
   }
 
-  // 2. Careful subtitle/colon match while blocking spin-offs/novels/colored variants
+  // 2. Careful subtitle/colon match while blocking spin-offs/light-novels/colored variants
   const combinedTargetText = targetNorms.join(' ');
+  const safeCandidates = [];
   for (const cand of pillCandidates) {
     const candNorm = normalizeTitleForMatch(cand.title);
     if (!candNorm || candNorm.length < 5) continue;
@@ -511,6 +578,7 @@ function findBestMangaPillMatch(targetManga, pillCandidates = []) {
       (w) => candNorm.includes(w) && !combinedTargetText.includes(w)
     );
     if (hasUnwantedSpinoffWord) continue;
+    safeCandidates.push({ cand, candNorm });
 
     for (const tNorm of targetNorms) {
       if (tNorm.length < 6) continue;
@@ -519,6 +587,27 @@ function findBestMangaPillMatch(targetManga, pillCandidates = []) {
         if (diffRatio >= 0.65) {
           return cand;
         }
+      }
+    }
+  }
+
+  // 3. Token Dice-similarity fallback (>= 0.85 overlap on meaningful tokens)
+  for (const { cand, candNorm } of safeCandidates) {
+    const candTokens = candNorm.split(' ').filter((w) => w.length >= 3);
+    if (candTokens.length < 2) continue;
+    const candSet = new Set(candTokens);
+
+    for (const tNorm of targetNorms) {
+      const tTokens = tNorm.split(' ').filter((w) => w.length >= 3);
+      if (tTokens.length < 2) continue;
+      const tSet = new Set(tTokens);
+      let overlap = 0;
+      for (const tok of tSet) {
+        if (candSet.has(tok)) overlap++;
+      }
+      const dice = (2 * overlap) / (tSet.size + candSet.size);
+      if (dice >= 0.85) {
+        return cand;
       }
     }
   }
@@ -612,6 +701,16 @@ function mergeHybridChapters(dexChapters = [], pillChapters = [], order = 'desc'
   };
 }
 
+async function searchPillAndMatch(dexMeta, queryText) {
+  const cleanQ = String(queryText || '').trim();
+  if (!cleanQ) return null;
+  const searchRes = await Promise.race([
+    mangapill.searchMangaPill(cleanQ, 1),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill match timeout')), 4500))
+  ]);
+  return findBestMangaPillMatch(dexMeta, searchRes?.data || []);
+}
+
 async function resolveMangaPillMatchForDex(dexId, hintTitle = '') {
   const mapKey = `hybrid_map_${dexId}`;
   const cachedPillId = cache.get(mapKey);
@@ -620,7 +719,7 @@ async function resolveMangaPillMatchForDex(dexId, hintTitle = '') {
 
   let dexMeta = cache.get(`manga_detail_${dexId}`);
   if (!dexMeta && hintTitle) {
-    dexMeta = { id: dexId, title: hintTitle, altTitles: [] };
+    dexMeta = { id: dexId, title: hintTitle, altTitles: [], links: {} };
   }
   if (!dexMeta) {
     try {
@@ -634,16 +733,72 @@ async function resolveMangaPillMatchForDex(dexId, hintTitle = '') {
 
   if (!dexMeta || !dexMeta.title) return null;
 
-  try {
-    const searchRes = await Promise.race([
-      mangapill.searchMangaPill(dexMeta.title, 1),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill match timeout')), 4500))
-    ]);
-    const matched = findBestMangaPillMatch(dexMeta, searchRes?.data || []);
-    if (matched && matched.pillId) {
-      cache.set(mapKey, matched.pillId, 86400);
-      return matched.pillId;
+  const pickLatinQueries = (titles) => {
+    const out = [];
+    const seen = new Set();
+    for (const t of titles) {
+      const s = String(t || '').trim();
+      const norm = normalizeTitleForMatch(s);
+      if (s.length >= 3 && s.length <= 65 && /[a-zA-Z]{2,}/.test(s) && norm && !seen.has(norm)) {
+        seen.add(norm);
+        out.push(s);
+      }
     }
+    return out;
+  };
+
+  try {
+    const triedNorms = new Set();
+    const initialQueries = pickLatinQueries([dexMeta.title, ...(dexMeta.altTitles || [])]).slice(0, 2);
+
+    for (const q of initialQueries) {
+      triedNorms.add(normalizeTitleForMatch(q));
+      const matched = await searchPillAndMatch(dexMeta, q).catch(() => null);
+      if (matched && matched.pillId) {
+        cache.set(mapKey, matched.pillId, 86400);
+        return matched.pillId;
+      }
+    }
+
+    // If initial query (e.g. only hintTitle or missing altTitles) failed, fetch full metadata & AniList aliases
+    if (!dexMeta.altTitles || dexMeta.altTitles.length === 0) {
+      try {
+        const mRes = await resilientFetch(`${MANGADEX_API}/manga/${dexId}?includes[]=cover_art`);
+        if (mRes?.data) {
+          dexMeta = formatManga(mRes.data);
+          cache.set(`manga_detail_${dexId}`, dexMeta, 1800);
+        }
+      } catch (_) {}
+    }
+
+    let extraMeta = cache.get(`manga_enrich_${dexId}`);
+    if (!extraMeta) {
+      extraMeta = await enrichment.getEnrichedMetadata({
+        title: dexMeta.title,
+        altTitles: dexMeta.altTitles || [],
+        links: dexMeta.links || {}
+      }).catch(() => null);
+    }
+
+    if (extraMeta && Array.isArray(extraMeta.synonyms) && extraMeta.synonyms.length > 0) {
+      dexMeta = {
+        ...dexMeta,
+        altTitles: Array.from(new Set([...(dexMeta.altTitles || []), ...extraMeta.synonyms]))
+      };
+    }
+
+    const secondaryQueries = pickLatinQueries([dexMeta.title, ...(dexMeta.altTitles || [])])
+      .filter((q) => !triedNorms.has(normalizeTitleForMatch(q)))
+      .slice(0, 2);
+
+    for (const q of secondaryQueries) {
+      const matched = await searchPillAndMatch(dexMeta, q).catch(() => null);
+      if (matched && matched.pillId) {
+        cache.set(mapKey, matched.pillId, 86400);
+        return matched.pillId;
+      }
+    }
+
     cache.set(mapKey, '__NONE__', 1800);
   } catch (_) {}
 
@@ -742,6 +897,7 @@ app.post('/api/auth/logout', (req, res) => {
   const authHeader = req.headers['authorization'] || '';
   const token = authHeader.replace(/^Bearer\s+/i, '');
   db.destroySession(token);
+  res.setHeader('Clear-Site-Data', '"cookies"');
   res.json({ success: true, message: 'Berhasil keluar.' });
 });
 
@@ -833,9 +989,10 @@ function setEdgeCache(res, browserSec = 180, edgeSec = 600, swrSec = 1200) {
   res.setHeader('Cache-Control', `public, max-age=${browserSec}, s-maxage=${edgeSec}, stale-while-revalidate=${swrSec}`);
 }
 
-// 1. Trending / Popular Manga
+// 1. Trending / Popular Manga, Manhwa & Manhua
 app.get('/api/trending', async (req, res) => {
-  const cacheKey = 'trending_manga';
+  const type = ['manga', 'manhwa', 'manhua'].includes(req.query.type) ? req.query.type : 'all';
+  const cacheKey = type === 'all' ? 'trending_manga' : `trending_manga_${type}`;
   const cached = cache.get(cacheKey);
   if (cached) {
     setEdgeCache(res, 300, 900, 1800);
@@ -843,11 +1000,30 @@ app.get('/api/trending', async (req, res) => {
   }
 
   try {
-    const url = `${MANGADEX_API}/manga?limit=14&offset=0&includes[]=cover_art&includes[]=author&includes[]=artist&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true`;
-    const data = await resilientFetch(url);
-    const mangaList = (data.data || []).map(formatManga);
+    const mangaList = await coalesce(cacheKey, async () => {
+      const params = new URLSearchParams();
+      params.set('limit', '14');
+      params.set('offset', '0');
+      params.append('includes[]', 'cover_art');
+      params.append('includes[]', 'author');
+      params.append('includes[]', 'artist');
+      params.set('order[followedCount]', 'desc');
+      params.append('contentRating[]', 'safe');
+      params.append('contentRating[]', 'suggestive');
+      params.set('hasAvailableChapters', 'true');
+      applyComicTypeFilter(params, type);
+      if (type !== 'all') {
+        params.append('availableTranslatedLanguage[]', 'en');
+        params.append('availableTranslatedLanguage[]', 'id');
+      }
 
-    cache.set(cacheKey, mangaList, 900); // 15 min
+      const url = `${MANGADEX_API}/manga?${params.toString()}`;
+      const data = await resilientFetch(url);
+      const list = (data.data || []).map(formatManga);
+      cache.set(cacheKey, list, 900); // 15 min
+      return list;
+    });
+
     setEdgeCache(res, 300, 900, 1800);
     res.json({ success: true, data: mangaList, source: 'api' });
   } catch (err) {
@@ -859,23 +1035,44 @@ app.get('/api/trending', async (req, res) => {
 // 2. Latest Updates
 app.get('/api/latest', async (req, res) => {
   const page = Math.max(1, parseInt(req.query.page || '1', 10) || 1);
+  const type = ['manga', 'manhwa', 'manhua'].includes(req.query.type) ? req.query.type : 'all';
   const limit = 20;
   const offset = (page - 1) * limit;
-  const cacheKey = `latest_manga_${page}`;
+  const cacheKey = type === 'all' ? `latest_manga_${page}` : `latest_manga_${type}_${page}`;
   const cached = cache.get(cacheKey);
   if (cached) {
     setEdgeCache(res, 180, 600, 1200);
-    return res.json({ success: true, data: cached, source: 'cache' });
+    if (Array.isArray(cached)) {
+      return res.json({ success: true, data: cached, source: 'cache' });
+    }
+    return res.json({ success: true, data: cached.data, total: cached.total, source: 'cache' });
   }
 
   try {
-    const url = `${MANGADEX_API}/manga?limit=${limit}&offset=${offset}&includes[]=cover_art&order[latestUploadedChapter]=desc&contentRating[]=safe&contentRating[]=suggestive&hasAvailableChapters=true`;
-    const data = await resilientFetch(url);
-    const mangaList = (data.data || []).map(formatManga);
+    const result = await coalesce(cacheKey, async () => {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      params.set('offset', String(offset));
+      params.append('includes[]', 'cover_art');
+      params.set('order[latestUploadedChapter]', 'desc');
+      params.append('contentRating[]', 'safe');
+      params.append('contentRating[]', 'suggestive');
+      params.set('hasAvailableChapters', 'true');
+      applyComicTypeFilter(params, type);
+      if (type !== 'all') {
+        params.append('availableTranslatedLanguage[]', 'en');
+        params.append('availableTranslatedLanguage[]', 'id');
+      }
 
-    cache.set(cacheKey, mangaList, 600); // 10 min
+      const url = `${MANGADEX_API}/manga?${params.toString()}`;
+      const data = await resilientFetch(url);
+      const list = (data.data || []).map(formatManga);
+      cache.set(cacheKey, list, 600); // 10 min
+      return { data: list, total: data.total };
+    });
+
     setEdgeCache(res, 180, 600, 1200);
-    res.json({ success: true, data: mangaList, total: data.total, source: 'api' });
+    res.json({ success: true, data: result.data, total: result.total, source: 'api' });
   } catch (err) {
     console.error('Latest error:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -884,12 +1081,13 @@ app.get('/api/latest', async (req, res) => {
 
 // 3. Search Manga with Filters
 app.get('/api/search', async (req, res) => {
-  const { q = '', tags = '', status = '', sort = 'relevance', lang = '', page = '1', limit: rawLimit = '24' } = req.query;
+  const { q = '', tags = '', status = '', sort = 'relevance', type: rawType = '', lang = '', page = '1', limit: rawLimit = '24' } = req.query;
+  const type = ['manga', 'manhwa', 'manhua'].includes(rawType) ? rawType : '';
   const limit = Math.max(1, Math.min(24, parseInt(rawLimit, 10) || 24));
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const offset = (pageNum - 1) * limit;
 
-  const cacheKey = `search_${q}_${tags}_${status}_${sort}_${lang}_${pageNum}_${limit}`;
+  const cacheKey = `search_${q}_${tags}_${status}_${sort}_${type}_${lang}_${pageNum}_${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) {
     setEdgeCache(res, 120, 300, 600);
@@ -897,57 +1095,62 @@ app.get('/api/search', async (req, res) => {
   }
 
   try {
-    const params = new URLSearchParams();
-    params.set('limit', limit.toString());
-    params.set('offset', offset.toString());
-    params.append('includes[]', 'cover_art');
-    params.append('contentRating[]', 'safe');
-    params.append('contentRating[]', 'suggestive');
-    params.set('hasAvailableChapters', 'true');
-
     const cleanQ = q.replace(/<[^>]*>/g, '').replace(/[<>"'&]/g, '').trim();
     if (q.trim() && !cleanQ) {
       // Entire query was HTML/script tags
       return res.json({ success: true, data: [], total: 0, source: 'sanitized' });
     }
 
-    if (cleanQ) params.set('title', cleanQ);
-    if (status) params.append('status[]', status);
+    const result = await coalesce(cacheKey, async () => {
+      const params = new URLSearchParams();
+      params.set('limit', limit.toString());
+      params.set('offset', offset.toString());
+      params.append('includes[]', 'cover_art');
+      params.append('contentRating[]', 'safe');
+      params.append('contentRating[]', 'suggestive');
+      params.set('hasAvailableChapters', 'true');
 
-    if (tags) {
-      const tagIds = tags.split(',').filter(Boolean);
-      tagIds.forEach((t) => params.append('includedTags[]', t));
-    }
+      if (cleanQ) params.set('title', cleanQ);
+      if (status) params.append('status[]', status);
+      applyComicTypeFilter(params, type);
 
-    if (lang) {
-      params.append('availableTranslatedLanguage[]', lang);
-    }
+      if (tags) {
+        const tagIds = tags.split(',').filter(Boolean);
+        tagIds.forEach((t) => params.append('includedTags[]', t));
+      }
 
-    // Sorting
-    switch (sort) {
-      case 'followed':
-        params.set('order[followedCount]', 'desc');
-        break;
-      case 'rating':
-        params.set('order[rating]', 'desc');
-        break;
-      case 'latest':
-        params.set('order[latestUploadedChapter]', 'desc');
-        break;
-      case 'title':
-        params.set('order[title]', 'asc');
-        break;
-      default:
-        params.set('order[relevance]', 'desc');
-        break;
-    }
+      if (lang) {
+        params.append('availableTranslatedLanguage[]', lang);
+      }
 
-    const url = `${MANGADEX_API}/manga?${params.toString()}`;
-    const data = await resilientFetch(url);
-    const mangaList = (data.data || []).map(formatManga);
+      const effectiveSort = sort === 'relevance' && (type || !cleanQ) ? 'followed' : sort;
+      switch (effectiveSort) {
+        case 'followed':
+          params.set('order[followedCount]', 'desc');
+          break;
+        case 'rating':
+          params.set('order[rating]', 'desc');
+          break;
+        case 'latest':
+          params.set('order[latestUploadedChapter]', 'desc');
+          break;
+        case 'title':
+          params.set('order[title]', 'asc');
+          break;
+        default:
+          params.set('order[relevance]', 'desc');
+          break;
+      }
 
-    const result = { data: mangaList, total: data.total || 0 };
-    cache.set(cacheKey, result, 600);
+      const url = `${MANGADEX_API}/manga?${params.toString()}`;
+      const data = await resilientFetch(url);
+      const mangaList = (data.data || []).map(formatManga);
+
+      const resObj = { data: mangaList, total: data.total || 0 };
+      cache.set(cacheKey, resObj, 600);
+      return resObj;
+    });
+
     setEdgeCache(res, 120, 300, 600);
     res.json({ success: true, data: result.data, total: result.total, source: 'api' });
   } catch (err) {
@@ -958,7 +1161,8 @@ app.get('/api/search', async (req, res) => {
 
 // 3b. Unified Smart Hybrid Search (Parallel MangaDex + MangaPill with Smart Deduplication)
 app.get('/api/hybrid/search', async (req, res) => {
-  const { q = '', tags = '', status = '', sort = 'relevance', lang = '', page = '1', limit: rawLimit = '24' } = req.query;
+  const { q = '', tags = '', status = '', sort = 'relevance', type: rawType = '', lang = '', page = '1', limit: rawLimit = '24' } = req.query;
+  const type = ['manga', 'manhwa', 'manhua'].includes(rawType) ? rawType : '';
   const limit = Math.max(1, Math.min(24, parseInt(rawLimit, 10) || 24));
   const pageNum = Math.max(1, parseInt(page, 10) || 1);
   const offset = (pageNum - 1) * limit;
@@ -968,7 +1172,7 @@ app.get('/api/hybrid/search', async (req, res) => {
     return res.json({ success: true, data: [], total: 0, source: 'sanitized' });
   }
 
-  const cacheKey = `hybrid_search_${cleanQ.toLowerCase()}_${tags}_${status}_${sort}_${lang}_${pageNum}_${limit}`;
+  const cacheKey = `hybrid_search_${cleanQ.toLowerCase()}_${tags}_${status}_${sort}_${type}_${lang}_${pageNum}_${limit}`;
   const cached = cache.get(cacheKey);
   if (cached) {
     setEdgeCache(res, 120, 300, 600);
@@ -976,87 +1180,100 @@ app.get('/api/hybrid/search', async (req, res) => {
   }
 
   try {
-    const params = new URLSearchParams();
-    params.set('limit', limit.toString());
-    params.set('offset', offset.toString());
-    params.append('includes[]', 'cover_art');
-    params.append('contentRating[]', 'safe');
-    params.append('contentRating[]', 'suggestive');
-    params.set('hasAvailableChapters', 'true');
+    const result = await coalesce(cacheKey, async () => {
+      const params = new URLSearchParams();
+      params.set('limit', limit.toString());
+      params.set('offset', offset.toString());
+      params.append('includes[]', 'cover_art');
+      params.append('contentRating[]', 'safe');
+      params.append('contentRating[]', 'suggestive');
+      params.set('hasAvailableChapters', 'true');
 
-    if (cleanQ) params.set('title', cleanQ);
-    if (status) params.append('status[]', status);
-    if (tags) {
-      tags.split(',').filter(Boolean).forEach((t) => params.append('includedTags[]', t));
-    }
-    if (lang) params.append('availableTranslatedLanguage[]', lang);
+      if (cleanQ) params.set('title', cleanQ);
+      if (status) params.append('status[]', status);
+      applyComicTypeFilter(params, type);
 
-    switch (sort) {
-      case 'followed': params.set('order[followedCount]', 'desc'); break;
-      case 'rating': params.set('order[rating]', 'desc'); break;
-      case 'latest': params.set('order[latestUploadedChapter]', 'desc'); break;
-      case 'title': params.set('order[title]', 'asc'); break;
-      default: params.set('order[relevance]', 'desc'); break;
-    }
-
-    // Run MangaDex and MangaPill in parallel (MangaPill only when a text query is given and no UUID tag filter)
-    const shouldQueryPill = Boolean(cleanQ) && !tags;
-    const [dexOutcome, pillOutcome] = await Promise.allSettled([
-      resilientFetch(`${MANGADEX_API}/manga?${params.toString()}`),
-      shouldQueryPill
-        ? Promise.race([
-            mangapill.searchMangaPill(cleanQ, pageNum),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill search timeout')), 4500))
-          ])
-        : Promise.resolve({ data: [] })
-    ]);
-
-    const dexRaw = dexOutcome.status === 'fulfilled' ? dexOutcome.value : null;
-    const pillList = pillOutcome.status === 'fulfilled' ? (pillOutcome.value?.data || []) : [];
-
-    if (!dexRaw && pillList.length === 0) {
-      throw dexOutcome.reason || new Error('Semua server pencarian sedang sibuk.');
-    }
-
-    const dexList = (dexRaw?.data || []).map(formatManga);
-    const consumedPillIds = new Set();
-
-    // Enrich MangaDex items with matched MangaPill complete-archive links & warm mapping cache
-    const mergedList = dexList.map((dexItem) => {
-      const matchedPill = findBestMangaPillMatch(dexItem, pillList);
-      if (matchedPill && matchedPill.pillId) {
-        consumedPillIds.add(matchedPill.id);
-        cache.set(`hybrid_map_${dexItem.id}`, matchedPill.pillId, 86400);
-        return {
-          ...dexItem,
-          pillId: matchedPill.pillId,
-          hasCompleteBackup: true,
-          hybridSource: true
-        };
+      if (tags) {
+        tags.split(',').filter(Boolean).forEach((t) => params.append('includedTags[]', t));
       }
-      return dexItem;
+      if (lang) {
+        params.append('availableTranslatedLanguage[]', lang);
+      } else if (type && !cleanQ) {
+        params.append('availableTranslatedLanguage[]', 'en');
+        params.append('availableTranslatedLanguage[]', 'id');
+      }
+
+      const effectiveSort = sort === 'relevance' && (type || !cleanQ) ? 'followed' : sort;
+      switch (effectiveSort) {
+        case 'followed': params.set('order[followedCount]', 'desc'); break;
+        case 'rating': params.set('order[rating]', 'desc'); break;
+        case 'latest': params.set('order[latestUploadedChapter]', 'desc'); break;
+        case 'title': params.set('order[title]', 'asc'); break;
+        default: params.set('order[relevance]', 'desc'); break;
+      }
+
+      // Run MangaDex and MangaPill in parallel when a text query is given and no UUID tag filter
+      const shouldQueryPill = Boolean(cleanQ) && !tags;
+      const [dexOutcome, pillOutcome] = await Promise.allSettled([
+        resilientFetch(`${MANGADEX_API}/manga?${params.toString()}`),
+        shouldQueryPill
+          ? Promise.race([
+              mangapill.searchMangaPill(cleanQ, pageNum),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill search timeout')), 4500))
+            ])
+          : Promise.resolve({ data: [] })
+      ]);
+
+      const dexRaw = dexOutcome.status === 'fulfilled' ? dexOutcome.value : null;
+      const pillList = pillOutcome.status === 'fulfilled' ? (pillOutcome.value?.data || []) : [];
+
+      if (!dexRaw && pillList.length === 0) {
+        throw dexOutcome.reason || new Error('Semua server pencarian sedang sibuk.');
+      }
+
+      const dexList = (dexRaw?.data || []).map(formatManga);
+      const consumedPillIds = new Set();
+
+      // Enrich MangaDex items with matched MangaPill complete-archive links & warm mapping cache
+      const mergedList = dexList.map((dexItem) => {
+        const matchedPill = findBestMangaPillMatch(dexItem, pillList);
+        if (matchedPill && matchedPill.pillId) {
+          consumedPillIds.add(matchedPill.id);
+          cache.set(`hybrid_map_${dexItem.id}`, matchedPill.pillId, 86400);
+          return {
+            ...dexItem,
+            pillId: matchedPill.pillId,
+            hasCompleteBackup: true,
+            hybridSource: true
+          };
+        }
+        return dexItem;
+      });
+
+      // Only append standalone MangaPill items when no origin-specific filter is active (or explicitly matches comicType)
+      if (!type) {
+        for (const pillItem of pillList) {
+          if (consumedPillIds.has(pillItem.id)) continue;
+          const normPill = normalizeTitleForMatch(pillItem.title);
+          const alreadyExists = mergedList.some((m) => {
+            const norms = [m.title, ...(m.altTitles || [])].map(normalizeTitleForMatch);
+            return norms.includes(normPill);
+          });
+          if (!alreadyExists) {
+            mergedList.push(pillItem);
+          }
+        }
+      }
+
+      const finalData = mergedList.slice(0, limit);
+      const total = Math.max(dexRaw?.total || 0, finalData.length);
+      const resObj = { data: finalData, total };
+      cache.set(cacheKey, resObj, 600);
+      return resObj;
     });
 
-    // Append unique series found exclusively on MangaPill
-    for (const pillItem of pillList) {
-      if (consumedPillIds.has(pillItem.id)) continue;
-      const normPill = normalizeTitleForMatch(pillItem.title);
-      const alreadyExists = mergedList.some((m) => {
-        const norms = [m.title, ...(m.altTitles || [])].map(normalizeTitleForMatch);
-        return norms.includes(normPill);
-      });
-      if (!alreadyExists) {
-        mergedList.push(pillItem);
-      }
-    }
-
-    const finalData = mergedList.slice(0, limit);
-    const total = Math.max(dexRaw?.total || 0, finalData.length);
-    const result = { data: finalData, total };
-
-    cache.set(cacheKey, result, 600);
     setEdgeCache(res, 120, 300, 600);
-    res.json({ success: true, data: finalData, total, source: 'hybrid' });
+    res.json({ success: true, data: result.data, total: result.total, source: 'hybrid' });
   } catch (err) {
     console.error('Hybrid search error:', err.message);
     res.status(500).json({ success: false, error: err.message });
@@ -1091,10 +1308,15 @@ app.get('/api/tags', async (req, res) => {
 // 4b. Random Manga Discovery (with instant pool fallback so it never fails)
 app.get('/api/random', async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  const type = ['manga', 'manhwa', 'manhua'].includes(req.query.type) ? req.query.type : 'all';
   try {
-    const data = await resilientFetch(
-      `${MANGADEX_API}/manga/random?includes[]=cover_art&contentRating[]=safe&contentRating[]=suggestive`
-    );
+    const params = new URLSearchParams();
+    params.append('includes[]', 'cover_art');
+    params.append('contentRating[]', 'safe');
+    params.append('contentRating[]', 'suggestive');
+    applyComicTypeFilter(params, type);
+
+    const data = await resilientFetch(`${MANGADEX_API}/manga/random?${params.toString()}`);
     if (data && data.data) {
       const formatted = formatManga(data.data);
       cache.set(`manga_detail_${formatted.id}`, formatted, 1800);
@@ -1103,7 +1325,7 @@ app.get('/api/random', async (req, res) => {
     throw new Error('Random manga response empty');
   } catch (err) {
     const fallbackPool = [
-      ...(cache.get('trending_manga') || []),
+      ...(cache.get(type === 'all' ? 'trending_manga' : `trending_manga_${type}`) || cache.get('trending_manga') || []),
       ...(cache.get('latest_manga_1') || [])
     ];
     if (fallbackPool.length > 0) {
@@ -1125,34 +1347,25 @@ app.get('/api/manga/:id', async (req, res) => {
   }
 
   try {
-    const url = `${MANGADEX_API}/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`;
-    const [data, statsRes] = await Promise.all([
-      resilientFetch(url),
-      resilientFetch(`${MANGADEX_API}/statistics/manga/${id}`).catch(() => null)
-    ]);
-    if (!data.data) throw new Error('Manga not found');
+    const formatted = await coalesce(cacheKey, async () => {
+      const url = `${MANGADEX_API}/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`;
+      const [data, statsRes] = await Promise.all([
+        resilientFetch(url),
+        resilientFetch(`${MANGADEX_API}/statistics/manga/${id}`).catch(() => null)
+      ]);
+      if (!data.data) throw new Error('Manga not found');
 
-    const formatted = formatManga(data.data);
+      const item = formatManga(data.data);
+      const stats = statsRes?.statistics?.[id];
+      if (stats) {
+        item.rating = stats.rating?.bayesian ? stats.rating.bayesian.toFixed(2) : null;
+        item.follows = stats.follows || 0;
+      }
 
-    // Extract author / artist
-    const rels = data.data.relationships || [];
-    const authors = rels
-      .filter((r) => r.type === 'author')
-      .map((r) => r.attributes?.name || 'Unknown');
-    const artists = rels
-      .filter((r) => r.type === 'artist')
-      .map((r) => r.attributes?.name || 'Unknown');
+      cache.set(cacheKey, item, 1800); // 30 min
+      return item;
+    });
 
-    formatted.authors = authors;
-    formatted.artists = artists;
-
-    const stats = statsRes?.statistics?.[id];
-    if (stats) {
-      formatted.rating = stats.rating?.bayesian ? stats.rating.bayesian.toFixed(2) : null;
-      formatted.follows = stats.follows || 0;
-    }
-
-    cache.set(cacheKey, formatted, 1800); // 30 min
     setEdgeCache(res, 300, 900, 1800);
     res.json({ success: true, data: formatted, source: 'api' });
   } catch (err) {
@@ -1161,7 +1374,152 @@ app.get('/api/manga/:id', async (req, res) => {
   }
 });
 
-// 6. Manga Chapters Feed (with Smart Hybrid Auto-Fill from MangaPill when gaps/external links exist)
+// 5b. Multi-API Manga Enrichment (AniList Characters/Banners/Relations + Kitsu + MangaDex Recommendations)
+app.get('/api/manga/:id/enrichment', async (req, res) => {
+  const { id } = req.params;
+  const hintTitle = typeof req.query.title === 'string' ? req.query.title.trim() : '';
+  const cacheKey = `manga_enrich_${id}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    setEdgeCache(res, 600, 3600, 7200);
+    return res.json({ success: true, data: cached, source: 'cache' });
+  }
+
+  try {
+    const payload = await coalesce(cacheKey, async () => {
+      const isPillId = String(id).startsWith('pill-') || /^\d+$/.test(String(id));
+      let baseMeta = cache.get(`manga_detail_${id}`) || (isPillId ? cache.get(`pill:manga:${String(id).replace(/^pill-/, '')}`) : null);
+
+      if (!baseMeta) {
+        if (isPillId) {
+          const pillRes = await mangapill.getMangaPillDetail(String(id).replace(/^pill-/, '')).catch(() => null);
+          baseMeta = pillRes?.data || null;
+        } else if (/^[0-9a-f-]{20,40}$/i.test(id)) {
+          const mRes = await resilientFetch(`${MANGADEX_API}/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`).catch(() => null);
+          if (mRes?.data) {
+            baseMeta = formatManga(mRes.data);
+            cache.set(`manga_detail_${id}`, baseMeta, 1800);
+          }
+        }
+      }
+
+      const targetTitle = baseMeta?.title || hintTitle;
+      if (!targetTitle) {
+        return {
+          anilistId: null,
+          malId: null,
+          kitsuId: null,
+          muId: null,
+          countryOfOrigin: null,
+          comicType: 'manga',
+          bannerUrl: null,
+          coverUrlExtra: null,
+          anilistScore: null,
+          popularity: null,
+          totalChaptersKnown: null,
+          volumesKnown: null,
+          description: '',
+          synonyms: [],
+          characters: [],
+          relations: [],
+          recommendations: []
+        };
+      }
+
+      const isDexUuid = !isPillId && /^[0-9a-f-]{20,40}$/i.test(id);
+      const [enrichedOutcome, dexRecsOutcome] = await Promise.allSettled([
+        enrichment.getEnrichedMetadata({
+          title: targetTitle,
+          altTitles: baseMeta?.altTitles || [],
+          links: baseMeta?.links || {}
+        }),
+        isDexUuid
+          ? resilientFetch(`${MANGADEX_API}/manga/${id}/recommendation?limit=8`).catch(() => null)
+          : Promise.resolve(null)
+      ]);
+
+      const enriched = enrichedOutcome.status === 'fulfilled' && enrichedOutcome.value
+        ? enrichedOutcome.value
+        : {
+            anilistId: null,
+            malId: baseMeta?.links?.mal || null,
+            kitsuId: baseMeta?.links?.kt || null,
+            muId: baseMeta?.links?.mu || null,
+            countryOfOrigin: null,
+            comicType: baseMeta?.comicType || 'manga',
+            bannerUrl: null,
+            coverUrlExtra: null,
+            anilistScore: null,
+            popularity: null,
+            totalChaptersKnown: null,
+            volumesKnown: null,
+            description: '',
+            synonyms: [],
+            characters: [],
+            relations: [],
+            recommendations: []
+          };
+
+      // Resolve MangaDex direct recommended series IDs in 1 batch call so clicks open directly!
+      const directDexRecs = [];
+      const recRawList = dexRecsOutcome.status === 'fulfilled' ? (dexRecsOutcome.value?.data || []) : [];
+      if (Array.isArray(recRawList) && recRawList.length > 0) {
+        const recIds = [];
+        for (const entry of recRawList) {
+          const targetRel = (entry.relationships || []).find((r) => r.type === 'manga' && r.id && r.id !== id);
+          if (targetRel && !recIds.includes(targetRel.id) && recIds.length < 8) {
+            recIds.push(targetRel.id);
+          }
+        }
+        if (recIds.length > 0) {
+          const batchParams = new URLSearchParams();
+          recIds.forEach((rid) => batchParams.append('ids[]', rid));
+          batchParams.append('includes[]', 'cover_art');
+          batchParams.set('limit', String(recIds.length));
+          const batchRes = await resilientFetch(`${MANGADEX_API}/manga?${batchParams.toString()}`).catch(() => null);
+          for (const item of (batchRes?.data || [])) {
+            const fmt = formatManga(item);
+            directDexRecs.push({
+              id: fmt.id,
+              dexId: fmt.id,
+              title: fmt.title,
+              score: fmt.rating || null,
+              comicType: fmt.comicType,
+              coverUrl: fmt.coverUrlSmall || fmt.coverUrl
+            });
+          }
+        }
+      }
+
+      // Merge direct MangaDex recommendations (with instant dexId) first, then AniList recommendations deduplicated
+      const seenRecTitles = new Set(directDexRecs.map((r) => normalizeTitleForMatch(r.title)));
+      const mergedRecs = [...directDexRecs];
+      for (const alRec of (enriched.recommendations || [])) {
+        const norm = normalizeTitleForMatch(alRec.title);
+        if (norm && !seenRecTitles.has(norm)) {
+          seenRecTitles.add(norm);
+          mergedRecs.push(alRec);
+        }
+      }
+
+      const finalPayload = {
+        ...enriched,
+        recommendations: mergedRecs.slice(0, 10)
+      };
+
+      cache.set(cacheKey, finalPayload, 3600); // 1 hour
+      return finalPayload;
+    });
+
+    setEdgeCache(res, 600, 3600, 7200);
+    res.json({ success: true, data: payload, source: 'api' });
+  } catch (err) {
+    console.error('Manga enrichment error:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// 6. Manga Chapters Feed (Multi-Batch Pagination >500 Chapters + Smart Hybrid Auto-Fill)
 app.get('/api/manga/:id/chapters', async (req, res) => {
   const { id } = req.params;
   const lang = req.query.lang || 'en,id';
@@ -1189,83 +1547,107 @@ app.get('/api/manga/:id/chapters', async (req, res) => {
   }
 
   try {
-    // Fetch chapters up to 500 from MangaDex
-    const params = new URLSearchParams();
-    params.set('limit', '500');
-    params.append('order[chapter]', order);
-    params.append('includes[]', 'scanlation_group');
-    params.append('contentRating[]', 'safe');
-    params.append('contentRating[]', 'suggestive');
-    params.append('contentRating[]', 'erotica');
-
-    languages.forEach((l) => params.append('translatedLanguage[]', l));
-
-    const url = `${MANGADEX_API}/manga/${id}/feed?${params.toString()}`;
-    const data = await resilientFetch(url);
-
-    let chapters = (data.data || []).map((ch) => {
-      const attrs = ch.attributes || {};
-      const scanGroup = (ch.relationships || []).find((r) => r.type === 'scanlation_group');
-
-      return {
-        id: ch.id,
-        chapter: attrs.chapter || '0',
-        volume: attrs.volume || null,
-        title: attrs.title || '',
-        language: attrs.translatedLanguage,
-        pages: attrs.pages || 0,
-        publishAt: attrs.publishAt,
-        externalUrl: attrs.externalUrl || null,
-        isExternal: Boolean(attrs.externalUrl && (!attrs.pages || attrs.pages === 0)),
-        source: 'mangadex',
-        group: scanGroup?.attributes?.name || 'Unknown Scanlation'
+    const payload = await coalesce(cacheKey, async () => {
+      const buildFeedUrl = (offset = 0) => {
+        const params = new URLSearchParams();
+        params.set('limit', '500');
+        params.set('offset', String(offset));
+        params.append('order[chapter]', order);
+        params.append('includes[]', 'scanlation_group');
+        params.append('contentRating[]', 'safe');
+        params.append('contentRating[]', 'suggestive');
+        params.append('contentRating[]', 'erotica');
+        languages.forEach((l) => params.append('translatedLanguage[]', l));
+        return `${MANGADEX_API}/manga/${id}/feed?${params.toString()}`;
       };
-    });
 
-    let hybridMerged = false;
-    let addedFromPill = 0;
-    let matchedPillId = null;
+      const firstData = await resilientFetch(buildFeedUrl(0));
+      let rawItems = Array.isArray(firstData.data) ? [...firstData.data] : [];
+      const totalFeed = Number(firstData.total) || rawItems.length;
 
-    // Automatically patch missing/external chapters from MangaPill when needed
-    if (enableHybrid && doesChapterFeedNeedAutoFill(chapters)) {
-      try {
-        matchedPillId = await resolveMangaPillMatchForDex(id, hintTitle);
-        if (matchedPillId) {
-          let pillDetail = cache.get(`pill:manga:${matchedPillId}`);
-          if (!pillDetail) {
-            const pillRes = await Promise.race([
-              mangapill.getMangaPillDetail(matchedPillId),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill detail timeout')), 5500))
-            ]);
-            pillDetail = pillRes?.data || null;
-            if (pillDetail) {
-              cache.set(`pill:manga:${matchedPillId}`, pillDetail, 900);
-            }
-          }
-
-          if (pillDetail && Array.isArray(pillDetail.chapters) && pillDetail.chapters.length > 0) {
-            const merged = mergeHybridChapters(chapters, pillDetail.chapters, order);
-            chapters = merged.chapters;
-            addedFromPill = merged.addedFromPill;
-            hybridMerged = addedFromPill > 0;
+      // Unlock >500 chapter pagination for long-running series (up to 2,500 feed rows)
+      if (totalFeed > 500) {
+        const extraOffsets = [500, 1000, 1500, 2000].filter((off) => off < totalFeed);
+        const batchOutcomes = await Promise.allSettled(
+          extraOffsets.map((off) => resilientFetch(buildFeedUrl(off)))
+        );
+        for (const outcome of batchOutcomes) {
+          if (outcome.status === 'fulfilled' && Array.isArray(outcome.value?.data)) {
+            rawItems.push(...outcome.value.data);
           }
         }
-      } catch (hybErr) {
-        console.warn('[Hybrid Auto-Fill Skipped]:', hybErr.message);
       }
-    }
 
-    const payload = { chapters, hybridMerged, addedFromPill, pillId: matchedPillId };
-    cache.set(cacheKey, payload, 900); // 15 min
+      const seenChIds = new Set();
+      let chapters = [];
+      for (const ch of rawItems) {
+        if (!ch || !ch.id || seenChIds.has(ch.id)) continue;
+        seenChIds.add(ch.id);
+        const attrs = ch.attributes || {};
+        const scanGroup = (ch.relationships || []).find((r) => r.type === 'scanlation_group');
+
+        chapters.push({
+          id: ch.id,
+          chapter: attrs.chapter || '0',
+          volume: attrs.volume || null,
+          title: attrs.title || '',
+          language: attrs.translatedLanguage,
+          pages: attrs.pages || 0,
+          publishAt: attrs.publishAt,
+          externalUrl: attrs.externalUrl || null,
+          isExternal: Boolean(attrs.externalUrl && (!attrs.pages || attrs.pages === 0)),
+          source: 'mangadex',
+          group: scanGroup?.attributes?.name || 'Unknown Scanlation'
+        });
+      }
+
+      let hybridMerged = false;
+      let addedFromPill = 0;
+      let matchedPillId = null;
+
+      // Automatically patch missing/external chapters from MangaPill when needed
+      if (enableHybrid && doesChapterFeedNeedAutoFill(chapters)) {
+        try {
+          matchedPillId = await resolveMangaPillMatchForDex(id, hintTitle);
+          if (matchedPillId) {
+            let pillDetail = cache.get(`pill:manga:${matchedPillId}`);
+            if (!pillDetail) {
+              const pillRes = await Promise.race([
+                mangapill.getMangaPillDetail(matchedPillId),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('MangaPill detail timeout')), 5500))
+              ]);
+              pillDetail = pillRes?.data || null;
+              if (pillDetail) {
+                cache.set(`pill:manga:${matchedPillId}`, pillDetail, 900);
+              }
+            }
+
+            if (pillDetail && Array.isArray(pillDetail.chapters) && pillDetail.chapters.length > 0) {
+              const merged = mergeHybridChapters(chapters, pillDetail.chapters, order);
+              chapters = merged.chapters;
+              addedFromPill = merged.addedFromPill;
+              hybridMerged = addedFromPill > 0;
+            }
+          }
+        } catch (hybErr) {
+          console.warn('[Hybrid Auto-Fill Skipped]:', hybErr.message);
+        }
+      }
+
+      const resObj = { chapters, hybridMerged, addedFromPill, pillId: matchedPillId };
+      cache.set(cacheKey, resObj, 900); // 15 min
+      return resObj;
+    });
+
     setEdgeCache(res, 180, 600, 1200);
     res.json({
       success: true,
-      data: chapters,
-      total: chapters.length,
-      hybridMerged,
-      addedFromPill,
-      pillId: matchedPillId,
-      source: hybridMerged ? 'hybrid' : 'api'
+      data: payload.chapters,
+      total: payload.chapters.length,
+      hybridMerged: payload.hybridMerged,
+      addedFromPill: payload.addedFromPill,
+      pillId: payload.pillId,
+      source: payload.hybridMerged ? 'hybrid' : 'api'
     });
   } catch (err) {
     console.error('Chapters feed error:', err.message);
@@ -1509,8 +1891,10 @@ app.get('/api/proxy/image', async (req, res) => {
     const hostname = parsed.hostname.toLowerCase();
     const isPrivate =
       hostname === 'localhost' ||
+      hostname === '0.0.0.0' ||
       hostname === '127.0.0.1' ||
       hostname === '::1' ||
+      hostname === '[::1]' ||
       hostname.endsWith('.local') ||
       hostname.endsWith('.internal') ||
       hostname.endsWith('.localhost') ||
@@ -1531,7 +1915,12 @@ app.get('/api/proxy/image', async (req, res) => {
       'placehold.co',
       'mangapill.com',
       'cdn.readdetectiveconan.com',
-      'readdetectiveconan.com'
+      'readdetectiveconan.com',
+      's4.anilist.co',
+      'img.anili.st',
+      'media.kitsu.app',
+      'media.kitsu.io',
+      'cdn.myanimelist.net'
     ];
     const isAllowed = allowedHosts.some((h) => hostname === h || hostname.endsWith('.' + h));
 
@@ -1554,7 +1943,8 @@ app.get('/api/proxy/image', async (req, res) => {
           Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
         }
       : {
-          'User-Agent': USER_AGENT
+          'User-Agent': USER_AGENT,
+          Accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
         };
 
     let response = await fetch(imageUrl, {
@@ -1576,6 +1966,10 @@ app.get('/api/proxy/image', async (req, res) => {
     }
 
     const contentType = response.headers.get('content-type') || 'image/jpeg';
+    if (/^(text\/html|application\/javascript|text\/javascript|image\/svg\+xml)/i.test(contentType)) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(415).send('Tipe konten bukan gambar yang diizinkan');
+    }
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800');
 

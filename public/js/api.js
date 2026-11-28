@@ -161,13 +161,15 @@ const Api = {
   },
 
   // 1. Trending
-  async getTrending() {
-    return this.request('/trending', { cacheTtl: 5 * 60 * 1000 });
+  async getTrending(type = 'all') {
+    const typeQs = type && type !== 'all' ? `?type=${encodeURIComponent(type)}` : '';
+    return this.request(`/trending${typeQs}`, { cacheTtl: 5 * 60 * 1000 });
   },
 
   // 2. Latest Updates
-  async getLatest(page = 1) {
-    return this.request(`/latest?page=${page}`, { cacheTtl: 3 * 60 * 1000 });
+  async getLatest(page = 1, type = 'all') {
+    const typeQs = type && type !== 'all' ? `&type=${encodeURIComponent(type)}` : '';
+    return this.request(`/latest?page=${page}${typeQs}`, { cacheTtl: 3 * 60 * 1000 });
   },
 
   // 3. Search with filters
@@ -177,6 +179,7 @@ const Api = {
     if (params.tags) qs.set('tags', params.tags);
     if (params.status) qs.set('status', params.status);
     if (params.sort) qs.set('sort', params.sort);
+    if (params.type && params.type !== 'all') qs.set('type', params.type);
     if (params.lang) qs.set('lang', params.lang);
     if (params.page) qs.set('page', params.page);
     if (params.limit) qs.set('limit', params.limit);
@@ -193,6 +196,7 @@ const Api = {
     if (params.tags) qs.set('tags', params.tags);
     if (params.status) qs.set('status', params.status);
     if (params.sort) qs.set('sort', params.sort);
+    if (params.type && params.type !== 'all') qs.set('type', params.type);
     if (params.lang) qs.set('lang', params.lang);
     if (params.page) qs.set('page', params.page);
     if (params.limit) qs.set('limit', params.limit);
@@ -208,8 +212,9 @@ const Api = {
   },
 
   // 4b. Random Manga
-  async getRandomManga() {
-    return this.request('/random');
+  async getRandomManga(type = 'all') {
+    const typeQs = type && type !== 'all' ? `?type=${encodeURIComponent(type)}` : '';
+    return this.request(`/random${typeQs}`);
   },
 
   // Warm manga detail & chapters into memory cache on hover/touch for instant navigation
@@ -241,6 +246,12 @@ const Api = {
       return this.getMangaPillDetail(id);
     }
     return this.request(`/manga/${encodeURIComponent(id)}`, { cacheTtl: 5 * 60 * 1000 });
+  },
+
+  // 5b. Multi-API Manga Enrichment (AniList + Kitsu + Recommendations)
+  async getMangaEnrichment(id, title = '') {
+    const titleQs = title ? `?title=${encodeURIComponent(title)}` : '';
+    return this.request(`/manga/${encodeURIComponent(id)}/enrichment${titleQs}`, { cacheTtl: 10 * 60 * 1000 });
   },
 
   // 6. Manga Chapters (supports Smart Hybrid Auto-Fill by default)

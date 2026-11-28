@@ -19,6 +19,13 @@ function decodeHtmlEntities(str) {
     .trim();
 }
 
+function inferComicType(typeStr, tags = [], titleStr = '') {
+  const combined = `${typeStr || ''} ${(tags || []).join(' ')} ${titleStr || ''}`.toLowerCase();
+  if (combined.includes('manhwa') || combined.includes('webtoon')) return 'manhwa';
+  if (combined.includes('manhua')) return 'manhua';
+  return 'manga';
+}
+
 /**
  * Search manga on MangaPill
  * @param {string} query 
@@ -82,6 +89,7 @@ async function searchMangaPill(query, page = 1) {
       coverUrlSmall: coverUrl,
       rawCover: rawCover || coverUrl,
       type,
+      comicType: inferComicType(type, [], title),
       status: 'Publishing',
       source: 'mangapill',
       isCompleteSource: true,
@@ -208,6 +216,7 @@ async function getMangaPillDetail(id, slug = '') {
       description,
       status: meta.status || 'Publishing',
       type: meta.type || 'Manga',
+      comicType: inferComicType(meta.type, genres, title),
       year: meta.year || null,
       coverUrl,
       coverUrlSmall: coverUrl,
