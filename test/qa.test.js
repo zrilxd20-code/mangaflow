@@ -708,11 +708,47 @@ async function runComprehensiveQA() {
       'UI v2.1.0: Tab Manga/Manhwa/Manhua, Scroll Affordance (@property), Lazy/Dimension CLS & Enrichment Slot Aktif',
       indexHtml.includes('id="trending-type-tabs"') &&
       indexHtml.includes('id="filter-type-options"') &&
-      indexHtml.includes('?v=2.1.0') &&
+      /\?v=2\.\d+\.\d+/.test(indexHtml) &&
       styleCss.includes('@property --fade-start') &&
       styleCss.includes('.badge-manhwa') &&
       appJsContent.includes('loadDetailEnrichment') &&
       appJsContent.includes('switchTrendingType')
+    );
+
+    // 9.14 v2.2.0: Promotional Social Preview Banner, HTTPS OpenGraph & Share/Invite Hub QA
+    const rOgBanner = await fetch(`${baseUrl}/og-banner.jpg`);
+    const ogBannerBuf = Buffer.from(await rOgBanner.arrayBuffer());
+    const rOgHttpsManga = await fetch(`${baseUrl}/?manga=pill-2`, {
+      headers: { 'X-Forwarded-Proto': 'https' }
+    });
+    const ogHttpsHtml = await rOgHttpsManga.text();
+
+    assertTest(
+      'Banner Social OpenGraph HD (/og-banner.jpg) Tersedia (<500KB) & Link Manga Mendukung HTTPS Proto Header',
+      rOgBanner.status === 200 &&
+      (rOgBanner.headers.get('content-type') || '').includes('image/jpeg') &&
+      ogBannerBuf.length > 5000 &&
+      ogBannerBuf.length < 500000 &&
+      rOgHttpsManga.status === 200 &&
+      /property="og:url"\s+content="https:\/\//i.test(ogHttpsHtml) &&
+      /<link\s+rel="canonical"\s+href="https:\/\//i.test(ogHttpsHtml) &&
+      !ogHttpsHtml.includes('og:image:width')
+    );
+
+    assertTest(
+      'UI v2.2.0: Share & Invite Promo Hub (#share-promo-modal), Accessible Invoker Copy Button & JSON-LD Rich Schema Aktif',
+      indexHtml.includes('https://mangaflow-two.vercel.app/og-banner.jpg') &&
+      indexHtml.includes('property="og:image:width"') &&
+      indexHtml.includes('"@type": "WebApplication"') &&
+      indexHtml.includes('id="share-promo-modal"') &&
+      indexHtml.includes('id="btn-invite-nav"') &&
+      indexHtml.includes('command="--copy"') &&
+      indexHtml.includes('role="status"') &&
+      indexHtml.includes('?v=2.2.0') &&
+      /\.copy-tip\s*\{[^}]*opacity\s*:\s*0/s.test(styleCss) &&
+      !/\.copy-tip\s*\{[^}]*display\s*:\s*none/s.test(styleCss) &&
+      appJsContent.includes('openInviteModal(') &&
+      appJsContent.includes('handleCopyCommand(')
     );
 
   } catch (err) {

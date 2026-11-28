@@ -11,39 +11,59 @@
   <link rel="canonical" href="https://mangaflow-two.vercel.app/" />
   <meta name="google-site-verification" content="googlec8cc504b2f0522d2" />
 
-  <!-- Open Graph / Facebook -->
+  <!-- Open Graph / Facebook / WhatsApp / Telegram -->
   <meta property="og:type" content="website" />
+  <meta property="og:locale" content="id_ID" />
   <meta property="og:url" content="https://mangaflow-two.vercel.app/" />
-  <meta property="og:title" content="MangaFlow - Baca Manga Online Modern & Minimalis" />
-  <meta property="og:description" content="Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, bebas iklan mengganggu, dan anti-gagal." />
-  <meta property="og:image" content="/favicon.svg" />
+  <meta property="og:title" content="MangaFlow - Baca Manga, Manhwa & Manhua Gratis & Anti-Blokir" />
+  <meta property="og:description" content="Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, bebas iklan mengganggu, dan chapter lengkap otomatis." />
+  <meta property="og:image" content="https://mangaflow-two.vercel.app/og-banner.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:type" content="image/jpeg" />
   <meta property="og:site_name" content="MangaFlow" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="MangaFlow - Baca Manga Online Modern & Minimalis" />
-  <meta name="twitter:description" content="Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, bebas iklan mengganggu, dan anti-gagal." />
-  <meta name="twitter:image" content="/favicon.svg" />
+  <meta name="twitter:title" content="MangaFlow - Baca Manga, Manhwa & Manhua Gratis & Anti-Blokir" />
+  <meta name="twitter:description" content="Platform baca manga, manhwa, dan manhua online dengan tampilan modern minimalis, cepat, bebas iklan mengganggu, dan chapter lengkap otomatis." />
+  <meta name="twitter:image" content="https://mangaflow-two.vercel.app/og-banner.jpg" />
 
   <!-- Structured Data / JSON-LD for Google -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
-    "@type": "WebSite",
-    "name": "MangaFlow",
-    "url": "https://mangaflow-two.vercel.app/",
-    "description": "Platform baca manga, manhwa, dan manhua online modern dan minimalis.",
-    "potentialAction": {
-      "@type": "SearchAction",
-      "target": "https://mangaflow-two.vercel.app/?q={search_term_string}",
-      "query-input": "required name=search_term_string"
-    }
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "MangaFlow",
+        "url": "https://mangaflow-two.vercel.app/",
+        "description": "Platform baca manga, manhwa, dan manhua online modern, cepat, dan anti-blokir.",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://mangaflow-two.vercel.app/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "WebApplication",
+        "name": "MangaFlow",
+        "url": "https://mangaflow-two.vercel.app/",
+        "applicationCategory": "EntertainmentApplication",
+        "operatingSystem": "All",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "IDR"
+        }
+      }
+    ]
   }
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.1.0" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.2.0" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.2.0" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -75,8 +95,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=2.1.0" />
-  <link rel="stylesheet" href="./css/reader.css?v=2.1.0" />
+  <link rel="stylesheet" href="./css/style.css?v=2.2.0" />
+  <link rel="stylesheet" href="./css/reader.css?v=2.2.0" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -239,6 +259,9 @@
         </button>
         <button class="btn-icon" id="btn-random-nav" title="Kejutan Rekomendasi Manga Acak" onclick="app.openRandomManga()">
           <i class="ri-shuffle-line"></i>
+        </button>
+        <button type="button" class="btn-icon btn-invite-nav" id="btn-invite-nav" title="Undang Teman & Bagikan MangaFlow" aria-label="Undang Teman & Bagikan MangaFlow" onclick="app.openInviteModal()">
+          <i class="ri-share-forward-line" aria-hidden="true"></i>
         </button>
         <button class="btn-icon" id="btn-filter-toggle" title="Filter Pencarian Detail" onclick="app.toggleFilterModal()">
           <i class="ri-sound-module-line"></i>
@@ -491,6 +514,7 @@
         <button type="button" class="footer-link-btn" onclick="app.navigate('latest')">Terbaru</button>
         <button type="button" class="footer-link-btn" onclick="app.navigate('library')">Favorit</button>
         <button type="button" class="footer-link-btn" onclick="app.navigate('history')">Riwayat</button>
+        <button type="button" class="footer-link-btn footer-invite-btn" onclick="app.openInviteModal()"><i class="ri-share-forward-line" aria-hidden="true"></i> Undang Teman</button>
       </div>
       <div class="footer-meta-col">
         <span class="footer-status-pill"><span class="footer-status-dot"></span> Smart Hybrid Engine Aktif</span>
@@ -1027,6 +1051,85 @@
     </div>
   </div>
 
+  <!-- Share & Invite Friends Promo Modal -->
+  <div class="modal-backdrop" id="share-promo-modal" style="display: none;" onclick="if(event.target === this) app.closeShareModal()">
+    <div class="modal-box share-modal-box">
+      <div class="modal-header share-modal-header">
+        <div class="modal-title">
+          <i class="ri-megaphone-line" style="color: #a855f7;"></i>
+          <h3 id="share-modal-title">Ajak Teman Baca di MangaFlow</h3>
+        </div>
+        <button type="button" class="modal-close" aria-label="Tutup modal bagikan" onclick="app.closeShareModal()"><i class="ri-close-line"></i></button>
+      </div>
+
+      <div class="modal-body share-modal-body">
+        <p class="share-modal-desc" id="share-modal-desc">
+          Bagikan tautan MangaFlow ke teman atau grup komunitas. Kartu pratinjau HD akan tampil otomatis saat dikirim ke WhatsApp, Telegram, Discord, &amp; X.
+        </p>
+
+        <div class="share-social-grid" id="share-social-grid">
+          <button type="button" class="share-social-btn wa" id="share-btn-wa" onclick="app.triggerSocialShare('whatsapp')">
+            <i class="ri-whatsapp-line" aria-hidden="true"></i>
+            <span>WhatsApp</span>
+          </button>
+          <button type="button" class="share-social-btn tg" id="share-btn-tg" onclick="app.triggerSocialShare('telegram')">
+            <i class="ri-telegram-line" aria-hidden="true"></i>
+            <span>Telegram</span>
+          </button>
+          <button type="button" class="share-social-btn tw" id="share-btn-tw" onclick="app.triggerSocialShare('twitter')">
+            <i class="ri-twitter-x-line" aria-hidden="true"></i>
+            <span>X / Twitter</span>
+          </button>
+          <button type="button" class="share-social-btn fb" id="share-btn-fb" onclick="app.triggerSocialShare('facebook')">
+            <i class="ri-facebook-circle-line" aria-hidden="true"></i>
+            <span>Facebook</span>
+          </button>
+          <button type="button" class="share-social-btn native" id="share-btn-native" style="display: none;" onclick="app.triggerSocialShare('native')">
+            <i class="ri-share-line" aria-hidden="true"></i>
+            <span>Aplikasi Lain</span>
+          </button>
+        </div>
+
+        <div class="share-block">
+          <label class="filter-label" for="share-link-input">Tautan Langsung</label>
+          <div class="share-copy-field">
+            <input type="text" id="share-link-input" class="form-input share-readonly-input" value="https://mangaflow-two.vercel.app/" readonly />
+            <span class="copy-action-wrap">
+              <button type="button" class="btn btn-primary btn-sm copy-button" command="--copy" commandfor="share-link-input">
+                <i class="ri-file-copy-line copy-icon-default" aria-hidden="true"></i>
+                <i class="ri-check-line copy-icon-done" aria-hidden="true"></i>
+                <span>Salin Link</span>
+              </button>
+              <span class="copy-tip" role="status"></span>
+            </span>
+          </div>
+        </div>
+
+        <div class="share-block">
+          <div class="share-caption-head">
+            <label class="filter-label" for="share-caption-text">Pesan Promosi Siap Sebar</label>
+            <div class="share-template-tabs" id="share-template-tabs">
+              <button type="button" class="type-tab-btn active" data-tpl="wa" onclick="app.switchShareTemplate('wa')">WA / Grup</button>
+              <button type="button" class="type-tab-btn" data-tpl="discord" onclick="app.switchShareTemplate('discord')">Discord</button>
+              <button type="button" class="type-tab-btn" data-tpl="social" onclick="app.switchShareTemplate('social')">Medsos</button>
+            </div>
+          </div>
+          <textarea id="share-caption-text" class="comment-textarea share-caption-textarea" rows="4" readonly></textarea>
+          <div class="share-caption-actions">
+            <span class="copy-action-wrap">
+              <button type="button" class="btn btn-secondary btn-sm copy-button" command="--copy" commandfor="share-caption-text">
+                <i class="ri-file-copy-line copy-icon-default" aria-hidden="true"></i>
+                <i class="ri-check-line copy-icon-done" aria-hidden="true"></i>
+                <span>Salin Teks Promosi</span>
+              </button>
+              <span class="copy-tip" role="status"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
@@ -1103,17 +1206,17 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=2.1.0"></script>
-  <script src="./js/api.js?v=2.1.0"></script>
-  <script src="./js/reader.js?v=2.1.0"></script>
-  <script src="./js/app.js?v=2.1.0"></script>
+  <script src="./js/state.js?v=2.2.0"></script>
+  <script src="./js/api.js?v=2.2.0"></script>
+  <script src="./js/reader.js?v=2.2.0"></script>
+  <script src="./js/app.js?v=2.2.0"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
     if ('caches' in window) {
       caches.keys().then((keys) => {
         keys.forEach((k) => {
-          if (k.startsWith('mangaflow-') && k !== 'mangaflow-v2.1.0') caches.delete(k);
+          if (k.startsWith('mangaflow-') && k !== 'mangaflow-v2.2.0') caches.delete(k);
         });
       }).catch(() => {});
     }

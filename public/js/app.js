@@ -23,6 +23,10 @@ const app = {
   activeTrendingType: 'all',
   activeSource: 'auto',
   chaptersDisplayLimit: 80,
+  shareContext: null,
+  activeShareTemplate: 'wa',
+  _copyTimers: typeof WeakMap !== 'undefined' ? new WeakMap() : new Map(),
+  _lastCopyAnnouncement: '',
 
   async init() {
     const bootStart = Date.now();
@@ -255,8 +259,34 @@ const app = {
       const iosModal = document.getElementById('ios-install-modal');
       if (iosModal && iosModal.style.display === 'flex') {
         this.toggleIosInstallModal(false);
+        return;
+      }
+      const shareModal = document.getElementById('share-promo-modal');
+      if (shareModal && shareModal.style.display === 'flex') {
+        this.closeShareModal();
       }
     });
+
+    // Accessible Invoker Commands copy listener (single path so clicks never double-fire)
+    if (typeof window !== 'undefined' && 'CommandEvent' in window) {
+      document.addEventListener(
+        'command',
+        (event) => {
+          if (event.command && event.command.startsWith('--copy')) {
+            this.handleCopyCommand(event.source, event.target);
+          }
+        },
+        true
+      );
+    } else {
+      document.addEventListener('click', (event) => {
+        if (event.defaultPrevented) return;
+        const button = event.target.closest('button[command^="--copy"]');
+        if (!button) return;
+        const target = document.getElementById(button.getAttribute('commandfor'));
+        if (target) this.handleCopyCommand(button, target);
+      });
+    }
   },
 
   initScrollTopButton() {
@@ -2342,28 +2372,206 @@ const app = {
   shareManga() {
     if (!this.selectedManga) return;
     const shareUrl = `${window.location.origin}/?manga=${encodeURIComponent(this.selectedManga.id)}`;
+    this.openShareModal({
+      mode: 'manga',
+      title: this.selectedManga.title,
+      comicType: this.selectedManga.comicType || 'manga',
+      url: shareUrl
+    });
+  },
 
-    if (navigator.share) {
-      navigator.share({
-        title: this.selectedManga.title,
-        text: `Baca ${this.selectedManga.title} di MangaFlow`,
-        url: shareUrl
-      }).catch(() => {});
-    } else if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(shareUrl).then(() => {
-        this.showToast('Link manga disalin ke clipboard!');
-      }).catch(() => {
-        this.showToast('Gagal menyalin link.');
-      });
-    } else {
-      const tempInput = document.createElement('input');
-      tempInput.value = shareUrl;
-      document.body.appendChild(tempInput);
-      tempInput.select();
-      document.execCommand('copy');
-      document.body.removeChild(tempInput);
-      this.showToast('Link manga disalin ke clipboard!');
+  openInviteModal() {
+    this.openShareModal({
+      mode: 'site',
+      title: 'MangaFlow',
+      comicType: 'all',
+      url: `${window.location.origin}/`
+    });
+  },
+
+  openShareModal(opts = {}) {
+    const modal = document.getElementById('share-promo-modal');
+    if (!modal) return;
+    this.shareContext = {
+      mode: opts.mode || 'site',
+      title: opts.title || 'MangaFlow',
+      comicType: opts.comicType || 'manga',
+      url: opts.url || `${window.location.origin}/`
+    };
+
+    const titleEl = document.getElementById('share-modal-title');
+    const descEl = document.getElementById('share-modal-desc');
+    const linkInput = document.getElementById('share-link-input');
+    const nativeBtn = document.getElementById('share-btn-native');
+
+    if (titleEl) {
+      titleEl.textContent = this.shareContext.mode === 'manga'
+        ? `Bagikan "${this.shareContext.title}"`
+        : 'Ajak Teman Baca di MangaFlow';
     }
+    if (descEl) {
+      descEl.textContent = this.shareContext.mode === 'manga'
+        ? `Kirim tautan baca ${this.shareContext.title} ke WhatsApp, Telegram, Discord, atau medsos—lengkap dengan kartu cover & sinopsis.`
+        : 'Bagikan tautan MangaFlow ke teman atau grup komunitas. Kartu pratinjau HD tampil otomatis di WhatsApp, Telegram, Discord, & X.';
+    }
+    if (linkInput) {
+      linkInput.value = this.shareContext.url;
+    }
+    if (nativeBtn) {
+      nativeBtn.style.display = typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? 'flex' : 'none';
+    }
+
+    this.switchShareTemplate(this.activeShareTemplate || 'wa');
+    modal.style.display = 'flex';
+  },
+
+  closeShareModal() {
+    const modal = document.getElementById('share-promo-modal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  switchShareTemplate(tpl = 'wa') {
+    const safeTpl = ['wa', 'discord', 'social'].includes(tpl) ? tpl : 'wa';
+    this.activeShareTemplate = safeTpl;
+
+    document.querySelectorAll('#share-template-tabs .type-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tpl === safeTpl);
+    });
+
+    const ctx = this.shareContext || {
+      mode: 'site',
+      title: 'MangaFlow',
+      comicType: 'all',
+      url: `${window.location.origin}/`
+    };
+    const isManga = ctx.mode === 'manga';
+    const typeLabel = ctx.comicType === 'manhwa' ? 'Manhwa' : (ctx.comicType === 'manhua' ? 'Manhua' : 'Manga');
+
+    const templates = isManga
+      ? {
+          wa: `Lagi seru banget baca *${ctx.title}* (${typeLabel}) di MangaFlow! Chapters lengkap, loading ngebut, bebas iklan popup & anti-blokir. Yuk ikut baca bareng:\n${ctx.url}`,
+          discord: `📖 Rekomendasi ${typeLabel}: **${ctx.title}**\nBaca langsung HD, full chapters & nyaman di mode Webtoon/RTL tanpa iklan:\n${ctx.url}`,
+          social: `Lagi maraton ${ctx.title} di MangaFlow 🔥 Baca Manga, Manhwa & Manhua HD bebas iklan 👇\n${ctx.url} #MangaFlow #BacaManga #Manhwa`
+        }
+      : {
+          wa: `Rekomendasi web baca *Manga, Manhwa Korea & Manhua* gratis & bebas iklan nih! 🔥\n✅ Chapter lengkap otomatis (MangaDex + Arsip HD)\n✅ Mode Webtoon / RTL nyaman + Cloud Sync riwayat\nCoba buka langsung di sini:\n${ctx.url}`,
+          discord: `📚 **MangaFlow** — Platform baca **Manga, Manhwa & Manhua** modern bebas iklan!\n• Auto-fill chapter lengkap tanpa link eksternal terputus\n• Reader Webtoon/RTL pro + Auto-Scroll + Cloud Sync\n• Langsung buka: ${ctx.url}`,
+          social: `Tempat baru baca Manga, Manhwa & Manhua paling mulus tanpa pop-up iklan ✨ Cobain langsung MangaFlow:\n${ctx.url} #MangaFlow #BacaManga #ManhwaIndo`
+        };
+
+    const textarea = document.getElementById('share-caption-text');
+    if (textarea) {
+      textarea.value = templates[safeTpl];
+    }
+  },
+
+  async triggerSocialShare(platform) {
+    const ctx = this.shareContext || {
+      mode: 'site',
+      title: 'MangaFlow',
+      url: `${window.location.origin}/`
+    };
+    const captionEl = document.getElementById('share-caption-text');
+    const text = (captionEl && captionEl.value.trim()) || `Baca ${ctx.title} di MangaFlow! ${ctx.url}`;
+    const url = ctx.url;
+
+    if (platform === 'native' && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share({
+          title: ctx.mode === 'manga' ? `Baca ${ctx.title} di MangaFlow` : 'MangaFlow - Baca Manga, Manhwa & Manhua',
+          text,
+          url
+        });
+      } catch (_) {}
+      return;
+    }
+
+    let shareTarget = '';
+    if (platform === 'whatsapp') {
+      shareTarget = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    } else if (platform === 'telegram') {
+      shareTarget = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`;
+    } else if (platform === 'twitter') {
+      shareTarget = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
+    } else if (platform === 'facebook') {
+      shareTarget = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`;
+    }
+
+    if (shareTarget) {
+      window.open(shareTarget, '_blank', 'noopener,noreferrer');
+    }
+  },
+
+  legacyCopyText(text) {
+    const previousFocus = document.activeElement;
+    const field = Object.assign(document.createElement('textarea'), { value: text });
+    field.setAttribute('readonly', '');
+    field.style.cssText = 'position:fixed;inset-block-start:0;opacity:0;';
+    document.body.append(field);
+    field.select();
+    try {
+      return document.execCommand('copy');
+    } catch (_) {
+      return false;
+    } finally {
+      field.remove();
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus({ preventScroll: true });
+      }
+    }
+  },
+
+  async handleCopyCommand(button, target) {
+    if (!button || !target) return;
+    const text = target.matches('input, textarea')
+      ? String(target.value || '').trim()
+      : String(target.innerText || '').trim();
+    if (!text) return;
+
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(text);
+      } else if (!this.legacyCopyText(text)) {
+        throw new Error('Copy unavailable');
+      }
+      this.reportCopyStatus(button, true);
+    } catch (_) {
+      if (this.legacyCopyText(text)) {
+        this.reportCopyStatus(button, true);
+      } else {
+        this.reportCopyStatus(button, false);
+      }
+    }
+  },
+
+  reportCopyStatus(button, ok) {
+    const wrap = button.closest('.copy-action-wrap');
+    const tip = wrap ? wrap.querySelector('.copy-tip') : button.nextElementSibling;
+    const existingTimer = this._copyTimers.get(button);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    button.removeAttribute('data-copied');
+    button.removeAttribute('data-failed');
+
+    let message = ok ? 'Tersalin!' : 'Gagal menyalin';
+    if (message === this._lastCopyAnnouncement) {
+      message += '\u00A0';
+    }
+    this._lastCopyAnnouncement = message;
+
+    if (tip) tip.textContent = '';
+    void button.offsetWidth;
+    button.setAttribute(ok ? 'data-copied' : 'data-failed', '');
+    requestAnimationFrame(() => {
+      if (tip) tip.textContent = message;
+    });
+
+    const timeoutId = setTimeout(() => {
+      button.removeAttribute('data-copied');
+      button.removeAttribute('data-failed');
+      if (tip) tip.textContent = '';
+    }, 2000);
+    this._copyTimers.set(button, timeoutId);
   },
 
   toggleLangMenu() {

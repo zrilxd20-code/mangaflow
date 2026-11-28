@@ -134,38 +134,64 @@ function escapeAttr(str) {
     .replace(/>/g, '&gt;');
 }
 
+function getPublicBaseUrl(req) {
+  const hostHeader = req.get('host') || 'mangaflow-two.vercel.app';
+  const forwardedProto = req.headers['x-forwarded-proto']?.split(',')[0]?.trim();
+  const isLocal = /^(localhost|127\.0\.0\.1)(:\d+)?$/i.test(hostHeader);
+  const proto = forwardedProto || (isLocal ? req.protocol || 'http' : 'https');
+  return `${proto}://${hostHeader}`;
+}
+
 app.get('/robots.txt', (req, res) => {
-  const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
+  const host = getPublicBaseUrl(req);
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
   res.status(200).type('text/plain').send(
     `User-agent: *\nAllow: /\nDisallow: /api/auth/\nSitemap: ${host}/sitemap.xml\n`
   );
 });
 
 app.get('/sitemap.xml', async (req, res) => {
-  const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
-  let mangaList = cache.get('trending_manga') || cache.get('popular_manga') || [];
+  const host = getPublicBaseUrl(req);
+  const pool = [
+    ...(cache.get('trending_manga') || []),
+    ...(cache.get('trending_manga_manhwa') || []),
+    ...(cache.get('trending_manga_manhua') || []),
+    ...(cache.get('latest_manga_1') || [])
+  ];
 
-  if (!Array.isArray(mangaList) || mangaList.length === 0) {
-    mangaList = [
-      { id: 'pill-2' },
-      { id: 'pill-1896' },
-      { id: 'pill-1442' },
-      { id: 'a1c7c817-4e59-43b7-9365-09675a149a6f' },
-      { id: 'c52b2ce3-7f95-469c-96b0-479524fb7a1a' }
-    ];
+  const defaultPool = [
+    { id: 'pill-2' },
+    { id: '32d76d19-8a05-4db0-9fc2-e0b0648fe9d0' },
+    { id: 'pill-1896' },
+    { id: 'pill-1442' },
+    { id: 'a1c7c817-4e59-43b7-9365-09675a149a6f' },
+    { id: 'c52b2ce3-7f95-469c-96b0-479524fb7a1a' },
+    { id: 'pill-2809' },
+    { id: 'pill-4270' }
+  ];
+
+  const seen = new Set();
+  const mangaList = [];
+  for (const item of [...pool, ...defaultPool]) {
+    if (item && item.id && !seen.has(item.id)) {
+      seen.add(item.id);
+      mangaList.push(item);
+      if (mangaList.length >= 40) break;
+    }
   }
 
   const nowIso = new Date().toISOString();
 
   const urls = [
     `<url><loc>${host}/</loc><changefreq>hourly</changefreq><priority>1.0</priority><lastmod>${nowIso}</lastmod></url>`,
-    ...mangaList.slice(0, 20).map((m) =>
+    ...mangaList.map((m) =>
       `<url><loc>${host}/?manga=${encodeURIComponent(m.id)}</loc><changefreq>daily</changefreq><priority>0.8</priority></url>`
     )
   ];
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  ${urls.join('\n  ')}\n</urlset>`;
   res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400');
   res.status(200).send(xml);
 });
 
@@ -220,7 +246,7 @@ app.get('/', async (req, res, next) => {
 
     const htmlPath = path.join(__dirname, 'public', 'index.html');
     let html = fs.readFileSync(htmlPath, 'utf8');
-    const host = `${req.protocol}://${req.get('host') || 'mangaflow-two.vercel.app'}`;
+    const host = getPublicBaseUrl(req);
     const safeTitle = escapeAttr(`Baca ${mangaData.title} Bahasa Indonesia & HD - MangaFlow`);
     const cleanDesc = (mangaData.description || 'Baca manga, manhwa, dan manhua online gratis tanpa iklan di MangaFlow.')
       .replace(/\[\/?\w+\]/g, '')
@@ -230,7 +256,7 @@ app.get('/', async (req, res, next) => {
     const safeDesc = escapeAttr(cleanDesc);
     const coverImg = mangaData.coverUrl?.startsWith('/')
       ? `${host}${mangaData.coverUrl}`
-      : (mangaData.coverUrl || `${host}/favicon.svg`);
+      : (mangaData.coverUrl || `${host}/og-banner.jpg`);
     const safeCover = escapeAttr(coverImg);
     const shareUrl = escapeAttr(`${host}/?manga=${encodeURIComponent(trimmedId)}`);
 
@@ -243,6 +269,7 @@ app.get('/', async (req, res, next) => {
       .replace(/<meta\s+property="og:title"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:title" content="${safeTitle}" />`)
       .replace(/<meta\s+property="og:description"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:description" content="${safeDesc}" />`)
       .replace(/<meta\s+property="og:image"\s+content=".*?"\s*\/?>/i, () => `<meta property="og:image" content="${safeCover}" />`)
+      .replace(/<meta\s+property="og:image:(?:width|height|type)"[^>]*>\s*/gi, '')
       .replace(/<meta\s+name="twitter:card"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:card" content="summary_large_image" />`)
       .replace(/<meta\s+name="twitter:title"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:title" content="${safeTitle}" />`)
       .replace(/<meta\s+name="twitter:description"\s+content=".*?"\s*\/?>/i, () => `<meta name="twitter:description" content="${safeDesc}" />`)
