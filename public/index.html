@@ -62,8 +62,8 @@
   </script>
   
   <!-- Custom Brand Favicon (Replaces any cached default icons) -->
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.2.0" />
-  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.2.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2.3.0" />
+  <link rel="alternate icon" type="image/png" href="/favicon.svg?v=2.3.0" />
   
   <!-- PWA & Mobile Web Capabilities -->
   <link rel="manifest" href="/manifest.json" />
@@ -95,8 +95,8 @@
   <link href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.css" rel="stylesheet" />
 
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="./css/style.css?v=2.2.0" />
-  <link rel="stylesheet" href="./css/reader.css?v=2.2.0" />
+  <link rel="stylesheet" href="./css/style.css?v=2.3.0" />
+  <link rel="stylesheet" href="./css/reader.css?v=2.3.0" />
   
   <script>
     if (window.location.protocol === 'file:') {
@@ -1206,17 +1206,17 @@
   </div>
 
   <!-- Application Scripts -->
-  <script src="./js/state.js?v=2.2.0"></script>
-  <script src="./js/api.js?v=2.2.0"></script>
-  <script src="./js/reader.js?v=2.2.0"></script>
-  <script src="./js/app.js?v=2.2.0"></script>
+  <script src="./js/state.js?v=2.3.0"></script>
+  <script src="./js/api.js?v=2.3.0"></script>
+  <script src="./js/reader.js?v=2.3.0"></script>
+  <script src="./js/app.js?v=2.3.0"></script>
   
   <!-- Service Worker Registration for PWA & Auto-Fresh Updates -->
   <script>
     if ('caches' in window) {
       caches.keys().then((keys) => {
         keys.forEach((k) => {
-          if (k.startsWith('mangaflow-') && k !== 'mangaflow-v2.2.0') caches.delete(k);
+          if (k.startsWith('mangaflow-') && k !== 'mangaflow-v2.3.0') caches.delete(k);
         });
       }).catch(() => {});
     }

@@ -105,7 +105,28 @@ const ANILIST_FIELDS = `
       }
     }
   }
+  externalLinks {
+    site
+    url
+  }
 `;
+
+const OFFICIAL_LINK_SITES = new Set([
+  'webtoon',
+  'tapas',
+  'manga plus',
+  'kakaopage',
+  'kakao webtoon',
+  'viz',
+  'shonen jump',
+  'tappytoon',
+  'manta',
+  'pocket comics',
+  'lezhin',
+  'crunchyroll',
+  'bookwalker',
+  'naver webtoon'
+]);
 
 async function queryAniList(queryStr, variables) {
   const res = await fetch(ANILIST_GRAPHQL, {
@@ -231,6 +252,44 @@ async function fetchMangaUpdatesAliases(title) {
   }
 }
 
+async function searchAniListAliases(query) {
+  const cleanQ = String(query || '').trim();
+  if (!cleanQ) return [];
+  try {
+    const q = `
+      query ($search: String) {
+        Page(page: 1, perPage: 3) {
+          media(search: $search, type: MANGA, isAdult: false) {
+            title { english romaji }
+            synonyms
+          }
+        }
+      }
+    `;
+    const res = await fetch(ANILIST_GRAPHQL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ query: q, variables: { search: cleanQ } }),
+      signal: AbortSignal.timeout(4000)
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const out = new Set();
+    for (const m of (json?.data?.Page?.media || [])) {
+      if (m?.title?.english) out.add(m.title.english.trim());
+      if (m?.title?.romaji) out.add(m.title.romaji.trim());
+      if (Array.isArray(m?.synonyms)) {
+        m.synonyms.forEach((s) => {
+          if (typeof s === 'string' && /[a-zA-Z]{2,}/.test(s)) out.add(s.trim());
+        });
+      }
+    }
+    return Array.from(out).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 async function getEnrichedMetadata({ title = '', altTitles = [], links = {} } = {}) {
   const searchCandidates = [title, ...(Array.isArray(altTitles) ? altTitles : [])]
     .map((s) => String(s || '').trim())
@@ -321,6 +380,18 @@ async function getEnrichedMetadata({ title = '', altTitles = [], links = {} } = 
       coverUrl: proxyExternalImage(rec.coverImage?.large)
     }));
 
+  const officialLinks = (media?.externalLinks || [])
+    .filter((link) => {
+      if (!link || typeof link.url !== 'string' || !/^https:\/\//i.test(link.url)) return false;
+      const siteLower = String(link.site || '').toLowerCase().trim();
+      return OFFICIAL_LINK_SITES.has(siteLower);
+    })
+    .slice(0, 4)
+    .map((link) => ({
+      site: String(link.site).trim(),
+      url: link.url.trim()
+    }));
+
   const subtypeLower = String(kitsu?.subtype || '').toLowerCase();
   const countryOfOrigin = media?.countryOfOrigin || (subtypeLower === 'manhwa' ? 'KR' : subtypeLower === 'manhua' ? 'CN' : null);
 
@@ -339,6 +410,7 @@ async function getEnrichedMetadata({ title = '', altTitles = [], links = {} } = 
     volumesKnown: media?.volumes || null,
     description: anilistDesc || kitsu?.synopsis || '',
     synonyms: Array.from(synonymSet).slice(0, 15),
+    officialLinks,
     characters,
     relations,
     recommendations
@@ -351,5 +423,6 @@ module.exports = {
   fetchAniListMedia,
   fetchKitsuFallback,
   fetchMangaUpdatesAliases,
+  searchAniListAliases,
   getEnrichedMetadata
 };

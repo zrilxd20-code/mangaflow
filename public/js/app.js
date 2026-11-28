@@ -869,7 +869,9 @@ const app = {
 
     const statusClass = item.status === 'completed' ? 'completed' : 'ongoing';
     const statusText = item.status === 'completed' ? 'Tamat' : 'Ongoing';
+    const isKomiku = item.source === 'komiku' || String(item.id).startsWith('komiku-');
     const isPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+    const hasIndoSub = Boolean(item.hasIndoSub || isKomiku);
     const isHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
     const comicTypeBadge = item.comicType === 'manhwa'
       ? '<span class="card-badge badge-manhwa">Manhwa</span>'
@@ -879,6 +881,9 @@ const app = {
     const rankRibbonHtml = Number.isInteger(rank) && rank >= 1 && rank <= 10
       ? `<span class="card-rank-ribbon rank-${rank <= 3 ? rank : 'top'}" aria-label="Peringkat ${rank}">#${rank}</span>`
       : '';
+    const matchedAliasHtml = item.matchedAlias
+      ? `<div class="card-alias-match" title="Alias: ${this.escapeHtml(item.matchedAlias)}"><i class="ri-translate-2"></i> ${this.escapeHtml(item.matchedAlias)}</div>`
+      : '';
 
     card.innerHTML = `
       <div class="card-cover-wrap">
@@ -886,24 +891,26 @@ const app = {
         ${rankRibbonHtml}
         <div class="card-badges">
           ${comicTypeBadge}
+          ${hasIndoSub ? `<span class="card-badge badge-indo"><i class="ri-translate-2"></i> Sub Indo</span>` : ''}
           ${isPill ? `
             <span class="card-badge" style="background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; font-weight: 700;">
               <i class="ri-check-double-line"></i> Komplit
             </span>
-          ` : `
+          ` : (!hasIndoSub ? `
             <span class="card-badge badge-status ${statusClass}">
               <i class="ri-checkbox-blank-circle-fill" style="font-size: 0.55rem;"></i> ${statusText}
             </span>
-          `}
-          ${isHybrid ? `<span class="card-badge" style="background: rgba(16, 185, 129, 0.85); color: #fff; border: none; font-weight: 700;"><i class="ri-links-line"></i> Hybrid</span>` : ''}
-          ${!isHybrid && !comicTypeBadge && item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
+          ` : '')}
+          ${!hasIndoSub && isHybrid ? `<span class="card-badge" style="background: rgba(16, 185, 129, 0.85); color: #fff; border: none; font-weight: 700;"><i class="ri-links-line"></i> Hybrid</span>` : ''}
+          ${!hasIndoSub && !isHybrid && !comicTypeBadge && item.tags && item.tags[0] ? `<span class="card-badge">${this.escapeHtml(item.tags[0])}</span>` : ''}
         </div>
         <span class="card-read-pill"><i class="ri-book-open-line"></i> Baca</span>
       </div>
       <div class="card-body">
         <h4 class="card-title" title="${this.escapeHtml(item.title)}">${this.escapeHtml(item.title)}</h4>
+        ${matchedAliasHtml}
         <div class="card-meta">
-          <span>${item.year ? item.year : (isPill ? 'Server Komplit' : 'Manga')}</span>
+          <span>${item.year ? item.year : (isKomiku ? 'Sub Indo' : (isPill ? 'Server Komplit' : 'Manga'))}</span>
           <span style="color: #fbbf24;"><i class="ri-star-fill"></i> Populer</span>
         </div>
       </div>
@@ -992,6 +999,11 @@ const app = {
       const chapters = chaptersRes.data || [];
       const hybridMerged = Boolean(chaptersRes.hybridMerged);
       const addedFromPill = Number(chaptersRes.addedFromPill) || 0;
+      const addedFromKomiku = Number(chaptersRes.addedFromKomiku) || 0;
+      const hybridParts = [];
+      if (addedFromKomiku > 0) hybridParts.push(`+${addedFromKomiku} Ch. Sub Indo`);
+      if (addedFromPill > 0) hybridParts.push(`+${addedFromPill} Ch. EN`);
+      const hybridSummaryText = hybridParts.length > 0 ? hybridParts.join(' / ') : `+${addedFromPill + addedFromKomiku} Ch.`;
       const social = socialRes?.data || { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] };
       this.selectedManga = manga;
       this.currentMangaSocial = social;
@@ -1003,6 +1015,7 @@ const app = {
       const isLiked = social.userLiked || State.isMangaLikedLocally(manga.id);
       const likesCount = Math.max(social.likesCount || 0, isLiked ? 1 : 0);
       const userRating = social.userRating || 0;
+      const isKomiku = manga.source === 'komiku' || String(manga.id).startsWith('komiku-');
       const isPill = manga.source === 'mangapill' || String(manga.id).startsWith('pill-');
       const tagsHtml = (manga.tags || [])
         .map((t) => `<span class="detail-tag">${this.escapeHtml(t)}</span>`)
@@ -1055,7 +1068,12 @@ const app = {
                       ${social.ratingAvg ? `${social.ratingAvg} / 5 (${social.ratingCount} Suara)` : 'Belum ada rating komunitas'}
                     </span>
                   </div>
-                  ${isPill ? `
+                  ${isKomiku ? `
+                  <div class="stat-item" style="color: #34d399; font-weight: 700;">
+                    <i class="ri-translate-2"></i>
+                    <span>Sub Indo Komplit (${chapters.length} Chapter)</span>
+                  </div>
+                  ` : isPill ? `
                   <div class="stat-item" style="color: #10b981; font-weight: 700;">
                     <i class="ri-checkbox-circle-fill"></i>
                     <span>Server Komplit 100% (${chapters.length} Chapter)</span>
@@ -1066,9 +1084,9 @@ const app = {
                     <span>${(manga.follows || 0).toLocaleString()} Pembaca</span>
                   </div>
                   ${hybridMerged ? `
-                  <div class="stat-item" style="color: #34d399; font-weight: 700;" title="Chapter bolong/eksternal ditambal otomatis dari Server 2">
+                  <div class="stat-item" style="color: #34d399; font-weight: 700;" title="Chapter otomatis dilengkapi dari arsip Hybrid (Sub Indo & EN)">
                     <i class="ri-links-line"></i>
-                    <span>Hybrid Otomatis (+${addedFromPill} Ch. Ditambal)</span>
+                    <span>Hybrid Otomatis (${hybridSummaryText})</span>
                   </div>
                   ` : ''}
                   `}
@@ -1277,6 +1295,34 @@ const app = {
           if (!currText || currText === 'No description available.') {
             descEl.textContent = info.description;
           }
+        }
+      }
+
+      // Render Official Legal Source Links ("Sumber Resmi") if available from AniList
+      const officialLinks = Array.isArray(info.officialLinks)
+        ? info.officialLinks.filter((l) => l && typeof l.url === 'string' && l.url.startsWith('https://'))
+        : [];
+      if (officialLinks.length > 0 && !document.getElementById('detail-official-links')) {
+        const mainInfo = document.querySelector('#manga-view .detail-main-info');
+        if (mainInfo) {
+          const linksWrap = document.createElement('div');
+          linksWrap.className = 'detail-official-links';
+          linksWrap.id = 'detail-official-links';
+          const labelSpan = document.createElement('span');
+          labelSpan.className = 'official-links-label';
+          labelSpan.innerHTML = '<i class="ri-verified-badge-line"></i> Sumber Resmi:';
+          linksWrap.appendChild(labelSpan);
+
+          officialLinks.forEach((link) => {
+            const a = document.createElement('a');
+            a.className = 'official-link-chip';
+            a.href = link.url;
+            a.target = '_blank';
+            a.rel = 'noopener noreferrer';
+            a.innerHTML = `${this.escapeHtml(link.site || 'Official')} <i class="ri-external-link-line"></i>`;
+            linksWrap.appendChild(a);
+          });
+          mainInfo.appendChild(linksWrap);
         }
       }
 
@@ -2009,19 +2055,25 @@ const app = {
         this.navigate('manga', { id: item.id });
       };
 
+      const isItemKomiku = item.source === 'komiku' || String(item.id).startsWith('komiku-');
       const isItemPill = item.source === 'mangapill' || String(item.id).startsWith('pill-');
+      const hasItemIndo = Boolean(item.hasIndoSub || isItemKomiku);
       const isItemHybrid = Boolean(item.hasCompleteBackup || item.hybridSource);
       const fullCover = this.resolveCoverUrl(item.coverUrl) || this.getFallbackCoverDataUri(item.title);
       const thumbCover = this.resolveCoverUrl(item.coverUrlSmall || item.coverUrl) || fullCover;
+      const aliasSubHtml = item.matchedAlias
+        ? `<div class="search-item-alias">Alias: ${this.escapeHtml(item.matchedAlias)}</div>`
+        : '';
 
       el.innerHTML = `
         <img class="search-item-thumb" src="${this.escapeHtml(thumbCover)}" data-fallback-cover="${this.escapeHtml(fullCover)}" alt="${this.escapeHtml(item.title)}" onerror="app.handleCoverError(this, this.dataset.fallbackCover, this.alt)" />
         <div class="search-item-info">
           <div class="search-item-title">${this.escapeHtml(item.title)}</div>
+          ${aliasSubHtml}
           <div class="search-item-meta">
             <span>${this.escapeHtml(item.status || 'Publishing')}</span>
             <span>•</span>
-            <span style="${(isItemPill || isItemHybrid) ? 'color: #10b981; font-weight: 600;' : ''}">${isItemHybrid ? '⚡ Hybrid Komplit' : (isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? this.escapeHtml(item.tags[0]) : 'Manga'))}</span>
+            <span style="${(hasItemIndo || isItemPill || isItemHybrid) ? 'color: #10b981; font-weight: 600;' : ''}">${hasItemIndo ? '⚡ Sub Indo Komplit' : (isItemHybrid ? '⚡ Hybrid Komplit' : (isItemPill ? 'Komplit 100%' : (item.tags && item.tags[0] ? this.escapeHtml(item.tags[0]) : 'Manga')))}</span>
           </div>
         </div>
       `;
@@ -3172,6 +3224,10 @@ const app = {
       trimmed.startsWith('http://uploads.mangadex.org/') ||
       trimmed.startsWith('https://cdn.readdetectiveconan.com/') ||
       trimmed.startsWith('http://cdn.readdetectiveconan.com/') ||
+      trimmed.startsWith('https://komiku.org/') ||
+      trimmed.startsWith('https://img.komiku.org/') ||
+      trimmed.startsWith('https://thumbnail.komiku.org/') ||
+      trimmed.startsWith('https://img.komiku.id/') ||
       trimmed.startsWith('https://s4.anilist.co/') ||
       trimmed.startsWith('https://img.anili.st/') ||
       trimmed.startsWith('https://media.kitsu.app/') ||

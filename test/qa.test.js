@@ -744,11 +744,79 @@ async function runComprehensiveQA() {
       indexHtml.includes('id="btn-invite-nav"') &&
       indexHtml.includes('command="--copy"') &&
       indexHtml.includes('role="status"') &&
-      indexHtml.includes('?v=2.2.0') &&
+      /\?v=2\.\d+\.\d+/.test(indexHtml) &&
       /\.copy-tip\s*\{[^}]*opacity\s*:\s*0/s.test(styleCss) &&
       !/\.copy-tip\s*\{[^}]*display\s*:\s*none/s.test(styleCss) &&
       appJsContent.includes('openInviteModal(') &&
       appJsContent.includes('handleCopyCommand(')
+    );
+
+    // ---------------------------------------------------------
+    // 9.15 TRIPLE-SOURCE HYBRID (KOMIKU SUB INDO + SMART ALIAS + OFFICIAL LINKS) v2.3.0
+    // ---------------------------------------------------------
+    console.log('\n📋 [9.15] Pengujian Triple-Source Hybrid (Komiku Sub Indo), Smart Alias & Official Links...');
+    const blinkerId = 'c5cdf853-1b18-4d1a-8534-a7772841e424';
+
+    const rBlinkerSearch = await fetch(`${baseUrl}/api/hybrid/search?q=magic+academys+genius+blinker&limit=10`);
+    const jBlinkerSearch = await rBlinkerSearch.json();
+    const blinkerFound = (jBlinkerSearch.data || []).find(
+      (m) => m.id === blinkerId || /genius blinker|blink master/i.test(`${m.title} ${m.matchedAlias || ''}`)
+    );
+    assertTest(
+      'Smart Hybrid Search: "magic academys genius blinker" Ketemu + Smart Alias Highlight & Sub Indo Aktif',
+      rBlinkerSearch.status === 200 &&
+      jBlinkerSearch.success === true &&
+      Boolean(blinkerFound) &&
+      Boolean(blinkerFound.matchedAlias || /genius blinker/i.test(blinkerFound.title)) &&
+      Boolean(blinkerFound.hasIndoSub || blinkerFound.source === 'komiku')
+    );
+
+    const rBlinkerCh = await fetch(`${baseUrl}/api/manga/${blinkerId}/chapters?lang=en,id&order=desc`);
+    const jBlinkerCh = await rBlinkerCh.json();
+    const indoChs = (jBlinkerCh.data || []).filter((c) => c.language === 'id' && c.source === 'komiku');
+    assertTest(
+      'Triple-Source Auto-Fill: Magic Academy\'s Genius Blinker Otomatis Diisi 100+ Chapter Sub Indo dari Komiku',
+      rBlinkerCh.status === 200 &&
+      jBlinkerCh.success === true &&
+      jBlinkerCh.hybridMerged === true &&
+      Number(jBlinkerCh.addedFromKomiku) >= 50 &&
+      Array.isArray(jBlinkerCh.data) &&
+      jBlinkerCh.data.length >= 100 &&
+      indoChs.length >= 50
+    );
+
+    const sampleKomikuCh = indoChs[indoChs.length - 1];
+    let komikuPagesOk = false;
+    let komikuProxyOk = false;
+    if (sampleKomikuCh && sampleKomikuCh.id) {
+      const cleanKSlug = String(sampleKomikuCh.id).replace(/^komiku-/, '');
+      const rKPages = await fetch(`${baseUrl}/api/komiku/chapter/${encodeURIComponent(cleanKSlug)}`);
+      const jKPages = await rKPages.json();
+      const firstPage = jKPages?.data?.pages?.[0];
+      komikuPagesOk = rKPages.status === 200 && jKPages.success === true && Array.isArray(jKPages?.data?.pages) && jKPages.data.pages.length >= 5;
+      if (firstPage && firstPage.proxyUrl) {
+        const rKImg = await fetch(`${baseUrl}${firstPage.proxyUrl}`);
+        const kCt = rKImg.headers.get('content-type') || '';
+        komikuProxyOk = rKImg.status === 200 && kCt.startsWith('image/');
+      }
+    }
+    assertTest(
+      'Komiku Reader & Image Proxy: Ekstraksi Halaman Chapter & Streaming CDN img.komiku.org (image/*) Valid',
+      komikuPagesOk && komikuProxyOk
+    );
+
+    const rBlinkerEnrich = await fetch(`${baseUrl}/api/manga/${blinkerId}/enrichment`);
+    const jBlinkerEnrich = await rBlinkerEnrich.json();
+    assertTest(
+      'Official Legal Links & UI v2.3.0: Enrichment Mengembalikan officialLinks + UI Alias & Sumber Resmi Aktif',
+      rBlinkerEnrich.status === 200 &&
+      jBlinkerEnrich.success === true &&
+      Array.isArray(jBlinkerEnrich.data?.officialLinks) &&
+      jBlinkerEnrich.data.officialLinks.length > 0 &&
+      indexHtml.includes('?v=2.3.0') &&
+      appJsContent.includes('detail-official-links') &&
+      appJsContent.includes('card-alias-match') &&
+      appJsContent.includes('addedFromKomiku')
     );
 
   } catch (err) {

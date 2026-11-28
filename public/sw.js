@@ -2,17 +2,17 @@
 // MangaFlow Service Worker (PWA & Network-First Freshness)
 // ===================================================
 
-const CACHE_NAME = 'mangaflow-v2.2.0';
+const CACHE_NAME = 'mangaflow-v2.3.0';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
-  '/css/style.css?v=2.2.0',
-  '/css/reader.css?v=2.2.0',
-  '/js/state.js?v=2.2.0',
-  '/js/api.js?v=2.2.0',
-  '/js/reader.js?v=2.2.0',
-  '/js/app.js?v=2.2.0',
-  '/favicon.svg?v=2.2.0',
+  '/css/style.css?v=2.3.0',
+  '/css/reader.css?v=2.3.0',
+  '/js/state.js?v=2.3.0',
+  '/js/api.js?v=2.3.0',
+  '/js/reader.js?v=2.3.0',
+  '/js/app.js?v=2.3.0',
+  '/favicon.svg?v=2.3.0',
   '/og-banner.jpg',
   '/manifest.json'
 ];
