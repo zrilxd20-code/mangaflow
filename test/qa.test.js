@@ -808,15 +808,40 @@ async function runComprehensiveQA() {
     const rBlinkerEnrich = await fetch(`${baseUrl}/api/manga/${blinkerId}/enrichment`);
     const jBlinkerEnrich = await rBlinkerEnrich.json();
     assertTest(
-      'Official Legal Links & UI v2.3.0: Enrichment Mengembalikan officialLinks + UI Alias & Sumber Resmi Aktif',
+      'Official Legal Links & UI v2.4.0: Enrichment Mengembalikan officialLinks + UI Alias & Sumber Resmi Aktif',
       rBlinkerEnrich.status === 200 &&
       jBlinkerEnrich.success === true &&
       Array.isArray(jBlinkerEnrich.data?.officialLinks) &&
       jBlinkerEnrich.data.officialLinks.length > 0 &&
-      indexHtml.includes('?v=2.3.0') &&
+      /\?v=2\.\d+\.\d+/.test(indexHtml) &&
       appJsContent.includes('detail-official-links') &&
       appJsContent.includes('card-alias-match') &&
-      appJsContent.includes('addedFromKomiku')
+      appJsContent.includes('addedFromKomiku') &&
+      appJsContent.includes('addedFromMk')
+    );
+
+    const mkChs = (jBlinkerCh.data || []).filter((c) => c.source === 'mangakatana');
+    let mkPagesOk = false;
+    let mkProxyOk = false;
+    if (mkChs.length > 0) {
+      const sampleMk = mkChs[mkChs.length - 1];
+      const cleanMkId = String(sampleMk.id).replace(/^mk-/, '');
+      const rMkPages = await fetch(`${baseUrl}/api/mangakatana/chapter/${encodeURIComponent(cleanMkId)}`);
+      const jMkPages = await rMkPages.json();
+      const firstMkPage = jMkPages?.data?.pages?.[0];
+      mkPagesOk = rMkPages.status === 200 && jMkPages.success === true && Array.isArray(jMkPages?.data?.pages) && jMkPages.data.pages.length >= 5;
+      if (firstMkPage && firstMkPage.proxyUrl) {
+        const rMkImg = await fetch(`${baseUrl}${firstMkPage.proxyUrl}`);
+        const mkCt = rMkImg.headers.get('content-type') || '';
+        mkProxyOk = rMkImg.status === 200 && mkCt.startsWith('image/');
+      }
+    }
+    assertTest(
+      'Quad-Source Manhwa Archive (MangaKatana): Auto-Fill 90+ Chapter EN + Ekstraksi Halaman & Proxy CDN (image/*) Valid',
+      Number(jBlinkerCh.addedFromMk) >= 80 &&
+      mkChs.length >= 80 &&
+      mkPagesOk &&
+      mkProxyOk
     );
 
   } catch (err) {

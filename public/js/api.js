@@ -242,6 +242,9 @@ const Api = {
 
   // 5. Manga Details
   async getManga(id) {
+    if (String(id).startsWith('mk-')) {
+      return this.getMangaKatanaDetail(id);
+    }
     if (String(id).startsWith('komiku-')) {
       return this.getKomikuDetail(id);
     }
@@ -259,6 +262,14 @@ const Api = {
 
   // 6. Manga Chapters (supports Smart Hybrid Auto-Fill by default)
   async getChapters(mangaId, lang = 'en,id', order = 'desc', options = {}) {
+    if (String(mangaId).startsWith('mk-')) {
+      const res = await this.getMangaKatanaDetail(mangaId);
+      let chapters = res.data?.chapters || [];
+      if (order === 'asc') {
+        chapters = [...chapters].reverse();
+      }
+      return { success: true, data: chapters, total: chapters.length };
+    }
     if (String(mangaId).startsWith('komiku-')) {
       const res = await this.getKomikuDetail(mangaId);
       let chapters = res.data?.chapters || [];
@@ -297,6 +308,9 @@ const Api = {
 
   // 7. Chapter Pages
   async getChapterPages(chapterId) {
+    if (String(chapterId).startsWith('mk-')) {
+      return this.getMangaKatanaChapter(chapterId);
+    }
     if (String(chapterId).startsWith('komiku-')) {
       return this.getKomikuChapter(chapterId);
     }
@@ -304,6 +318,17 @@ const Api = {
       return this.getMangaPillChapter(chapterId);
     }
     return this.request(`/chapter/${chapterId}`, { cacheTtl: 5 * 60 * 1000 });
+  },
+
+  // ---------------- MangaKatana (Complete Manhwa/Manhua/Manga Provider) ----------------
+  async getMangaKatanaDetail(id) {
+    const cleanSlug = String(id).replace(/^mk-/, '');
+    return this.request(`/mangakatana/manga/${encodeURIComponent(cleanSlug)}`, { cacheTtl: 5 * 60 * 1000 });
+  },
+
+  async getMangaKatanaChapter(chapterId) {
+    const cleanId = String(chapterId).replace(/^mk-/, '');
+    return this.request(`/mangakatana/chapter/${encodeURIComponent(cleanId)}`, { cacheTtl: 10 * 60 * 1000 });
   },
 
   // ---------------- Komiku (Complete Manhwa/Manhua Sub Indo Provider) ----------------

@@ -1000,10 +1000,12 @@ const app = {
       const hybridMerged = Boolean(chaptersRes.hybridMerged);
       const addedFromPill = Number(chaptersRes.addedFromPill) || 0;
       const addedFromKomiku = Number(chaptersRes.addedFromKomiku) || 0;
+      const addedFromMk = Number(chaptersRes.addedFromMk) || 0;
+      const totalEnAdded = addedFromPill + addedFromMk;
       const hybridParts = [];
       if (addedFromKomiku > 0) hybridParts.push(`+${addedFromKomiku} Ch. Sub Indo`);
-      if (addedFromPill > 0) hybridParts.push(`+${addedFromPill} Ch. EN`);
-      const hybridSummaryText = hybridParts.length > 0 ? hybridParts.join(' / ') : `+${addedFromPill + addedFromKomiku} Ch.`;
+      if (totalEnAdded > 0) hybridParts.push(`+${totalEnAdded} Ch. EN`);
+      const hybridSummaryText = hybridParts.length > 0 ? hybridParts.join(' / ') : `+${totalEnAdded + addedFromKomiku} Ch.`;
       const social = socialRes?.data || { likesCount: 0, userLiked: false, ratingAvg: null, ratingCount: 0, userRating: null, comments: [] };
       this.selectedManga = manga;
       this.currentMangaSocial = social;
@@ -1016,7 +1018,7 @@ const app = {
       const likesCount = Math.max(social.likesCount || 0, isLiked ? 1 : 0);
       const userRating = social.userRating || 0;
       const isKomiku = manga.source === 'komiku' || String(manga.id).startsWith('komiku-');
-      const isPill = manga.source === 'mangapill' || String(manga.id).startsWith('pill-');
+      const isPill = manga.source === 'mangapill' || manga.source === 'mangakatana' || String(manga.id).startsWith('pill-') || String(manga.id).startsWith('mk-');
       const tagsHtml = (manga.tags || [])
         .map((t) => `<span class="detail-tag">${this.escapeHtml(t)}</span>`)
         .join('');
@@ -3228,6 +3230,7 @@ const app = {
       trimmed.startsWith('https://img.komiku.org/') ||
       trimmed.startsWith('https://thumbnail.komiku.org/') ||
       trimmed.startsWith('https://img.komiku.id/') ||
+      trimmed.startsWith('https://mangakatana.com/') ||
       trimmed.startsWith('https://s4.anilist.co/') ||
       trimmed.startsWith('https://img.anili.st/') ||
       trimmed.startsWith('https://media.kitsu.app/') ||
